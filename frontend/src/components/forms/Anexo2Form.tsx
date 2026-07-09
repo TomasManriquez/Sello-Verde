@@ -18,7 +18,14 @@ interface Anexo2FormProps {
 }
 
 export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }: Anexo2FormProps) {
-  const [locales, setLocales]   = useState<Local[]>(initialLocales);
+  // Normalizar locales iniciales: marcar instalaciones existentes con _isNew:false
+  const normalize = (ls: Local[]) =>
+    ls.map(l => ({
+      ...l,
+      instalaciones: (l.instalaciones ?? []).map(i => ({ ...i, _isNew: false })),
+    }));
+
+  const [locales, setLocales]   = useState<Local[]>(() => normalize(initialLocales));
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [success, setSuccess]   = useState(false);
@@ -29,11 +36,15 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
   };
 
   // ── Section C handlers ────────────────────────────────────
+  // Instalación con flag para distinguir nuevas de existentes
+  type InstalacionLocal = Instalacion & { _isNew?: boolean };
+
   const addInstalacion = (localId: number) => {
     setLocales(prev => prev.map(l => {
       if (l.id !== localId) return l;
-      const newInst: Instalacion = {
-        id: Date.now(), // temp id
+      const newInst: InstalacionLocal = {
+        id: Date.now(),  // ID temporal sólo para key de React
+        _isNew: true,    // 🔑 Marca explícita: este registro aún no existe en la BD
         local_id: localId,
         tipo_gas: TIPO_GAS_OPTIONS[0],
         abastecimiento: ABASTECIMIENTO_OPTIONS[0],
@@ -57,10 +68,24 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
     }));
   };
 
-  const removeInstalacion = (localId: number, instId: number) => {
+  const removeInstalacion = async (localId: number, instId: number) => {
+    const local = locales.find(l => l.id === localId);
+    const inst = local?.instalaciones?.find(i => i.id === instId) as InstalacionLocal | undefined;
+
+    // Si la instalación ya existe en la BD, eliminarla del backend primero
+    if (inst && !inst._isNew) {
+      try {
+        await localesApi.deleteInstalacion(instId);
+      } catch {
+        setError(`No se pudo eliminar la instalación #${instId} del servidor.`);
+        return;
+      }
+    }
+
+    // Remover del estado local (tanto nuevas como existentes)
     setLocales(prev => prev.map(l => {
       if (l.id !== localId) return l;
-      return { ...l, instalaciones: (l.instalaciones ?? []).filter(inst => inst.id !== instId) };
+      return { ...l, instalaciones: (l.instalaciones ?? []).filter(i => i.id !== instId) };
     }));
   };
 
@@ -70,21 +95,40 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
     setError(null);
     try {
       for (const local of locales) {
+        // Actualizar datos del local (nombre, dirección, usa_gas)
         await localesApi.update(local.id, {
-          nombre:   local.nombre,
+          nombre:    local.nombre,
           direccion: local.direccion,
-          usa_gas:  local.usa_gas,
+          usa_gas:   local.usa_gas,
         });
 
         if (local.usa_gas && local.instalaciones) {
-          for (const inst of local.instalaciones) {
-            await localesApi.addInstalacion(local.id, {
-              tipo_gas:      inst.tipo_gas,
-              abastecimiento:inst.abastecimiento,
-              zona:          inst.zona,
-              referencia:    inst.referencia,
-              artefacto:     inst.artefacto,
-            });
+          for (const inst of local.instalaciones as InstalacionLocal[]) {
+            const payload = {
+              tipo_gas:       inst.tipo_gas,
+              abastecimiento: inst.abastecimiento,
+              zona:           inst.zona,
+              referencia:     inst.referencia,
+              artefacto:      inst.artefacto,
+            };
+
+            if (inst._isNew) {
+              // ✅ Nueva instalación → POST (crear)
+              const created = await localesApi.addInstalacion(local.id, payload);
+              // Reemplazar el ID temporal por el ID real de la BD y limpiar _isNew
+              setLocales(prev => prev.map(l => {
+                if (l.id !== local.id) return l;
+                return {
+                  ...l,
+                  instalaciones: (l.instalaciones ?? []).map(i =>
+                    i.id === inst.id ? { ...created, _isNew: false } : i
+                  ),
+                };
+              }));
+            } else {
+              // ✅ Instalación existente → PUT (actualizar)
+              await localesApi.updateInstalacion(inst.id, payload);
+            }
           }
         }
       }

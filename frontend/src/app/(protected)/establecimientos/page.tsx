@@ -23,7 +23,9 @@ export default function EstablecimientosPage() {
     rbd: '',
     nombre: '',
     direccion: '',
-    propietario: 'SLEP Llanquihue',
+    comuna: '',
+    region: 'Los Lagos',
+    nombre_propietario: 'SLEP Llanquihue',
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export default function EstablecimientosPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEeData.rbd.trim() || !newEeData.nombre.trim() || !newEeData.direccion.trim()) {
-      setCreateError('Todos los campos son obligatorios');
+      setCreateError('RBD, Nombre y Dirección son obligatorios');
       return;
     }
 
@@ -67,7 +69,7 @@ export default function EstablecimientosPage() {
       const created = await establecimientosApi.create(newEeData);
       setEstablecimientos(prev => [created, ...prev]);
       setModalOpen(false);
-      setNewEeData({ rbd: '', nombre: '', direccion: '', propietario: 'SLEP Llanquihue' });
+      setNewEeData({ rbd: '', nombre: '', direccion: '', comuna: '', region: 'Los Lagos', nombre_propietario: 'SLEP Llanquihue' });
     } catch (err: any) {
       setCreateError(err.message || 'Error al crear establecimiento');
     } finally {
@@ -235,15 +237,21 @@ export default function EstablecimientosPage() {
           />
           <Input
             label="Dirección"
-            placeholder="Ej: Avenida Philippi 563, Frutillar"
+            placeholder="Ej: Avenida Philippi 563"
             value={newEeData.direccion}
             onChange={e => setNewEeData(prev => ({ ...prev, direccion: e.target.value }))}
             required
           />
           <Input
+            label="Comuna"
+            placeholder="Ej: Frutillar"
+            value={newEeData.comuna}
+            onChange={e => setNewEeData(prev => ({ ...prev, comuna: e.target.value }))}
+          />
+          <Input
             label="Propietario / Representante"
-            value={newEeData.propietario}
-            onChange={e => setNewEeData(prev => ({ ...prev, propietario: e.target.value }))}
+            value={newEeData.nombre_propietario}
+            onChange={e => setNewEeData(prev => ({ ...prev, nombre_propietario: e.target.value }))}
             required
           />
           <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>

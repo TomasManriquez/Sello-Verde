@@ -6,12 +6,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Expediente } from './entities/expediente.entity';
+import { HitoTC6 } from './entities/hito-tc6.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Alerta } from '../alertas/entities/alerta.entity';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
 import { EstadoTC6, EstadoGeneral } from '../common/enums';
 
-// TC6 state transition rules
+// TC6 forward transition rules
 const TC6_TRANSITIONS: Record<EstadoTC6, EstadoTC6[]> = {
   [EstadoTC6.SIN_INICIAR]: [EstadoTC6.EN_ELABORACION],
   [EstadoTC6.EN_ELABORACION]: [EstadoTC6.INGRESADO_SEC],
@@ -20,11 +21,22 @@ const TC6_TRANSITIONS: Record<EstadoTC6, EstadoTC6[]> = {
   [EstadoTC6.TC6_APROBADO]: [],
 };
 
+// TC6 reverse transition rules (undo)
+const TC6_REVERSE: Record<EstadoTC6, EstadoTC6 | null> = {
+  [EstadoTC6.SIN_INICIAR]: null,
+  [EstadoTC6.EN_ELABORACION]: EstadoTC6.SIN_INICIAR,
+  [EstadoTC6.INGRESADO_SEC]: EstadoTC6.EN_ELABORACION,
+  [EstadoTC6.OBSERVADO]: EstadoTC6.INGRESADO_SEC,
+  [EstadoTC6.TC6_APROBADO]: EstadoTC6.OBSERVADO,
+};
+
 @Injectable()
 export class ExpedientesService {
   constructor(
     @InjectRepository(Expediente)
     private expedienteRepository: Repository<Expediente>,
+    @InjectRepository(HitoTC6)
+    private hitoRepository: Repository<HitoTC6>,
     @InjectRepository(Establecimiento)
     private establecimientoRepository: Repository<Establecimiento>,
     @InjectRepository(Alerta)
@@ -37,7 +49,6 @@ export class ExpedientesService {
       order: { created_at: 'DESC' },
     });
 
-    // Add active alerts count
     const withAlerts = await Promise.all(
       items.map(async (exp) => {
         const alertasActivas = await this.alertaRepository.count({
@@ -56,10 +67,16 @@ export class ExpedientesService {
       relations: [
         'establecimiento',
         'establecimiento.locales',
+        'establecimiento.locales.instalaciones',
         'certificaciones',
         'certificaciones.defectos',
+        'certificaciones.local',
+        'certificaciones.instalacion',
+        'certificaciones.alertas',
         'documentos',
+        'hitos',
       ],
+      order: { hitos: { fecha: 'ASC' } } as any,
     });
 
     if (!item) {
@@ -68,6 +85,7 @@ export class ExpedientesService {
 
     const alertas = await this.alertaRepository.find({
       where: { expediente_id: id },
+      relations: ['instalacion', 'instalacion.local'],
       order: { fecha_vencimiento: 'ASC' },
     });
 
@@ -84,10 +102,29 @@ export class ExpedientesService {
       );
     }
 
+    // Validar que no exista ya un expediente para este establecimiento
+    const expedienteExistente = await this.expedienteRepository.findOne({
+      where: { establecimiento_id: dto.establecimiento_id },
+    });
+    if (expedienteExistente) {
+      throw new BadRequestException(
+        `El establecimiento ya tiene un expediente activo (#${expedienteExistente.id}). No se pueden crear expedientes duplicados.`,
+      );
+    }
+
     const item = this.expedienteRepository.create(dto);
     const saved = await this.expedienteRepository.save(item);
 
-    // Update establecimiento estado if it's still sin_gestion
+    // Registrar hito inicial
+    await this.hitoRepository.save(
+      this.hitoRepository.create({
+        expediente_id: saved.id,
+        estado_anterior: null,
+        estado_nuevo: EstadoTC6.SIN_INICIAR,
+        observaciones: 'Expediente creado',
+      }),
+    );
+
     if (est.estado_general === EstadoGeneral.SIN_GESTION) {
       est.estado_general = EstadoGeneral.EN_LEVANTAMIENTO;
       await this.establecimientoRepository.save(est);
@@ -108,7 +145,6 @@ export class ExpedientesService {
     Object.assign(item, dto);
     const saved = await this.expedienteRepository.save(item);
 
-    // Sync estado_general to establecimiento
     if (dto.estado_general && item.establecimiento) {
       item.establecimiento.estado_general = dto.estado_general;
       await this.establecimientoRepository.save(item.establecimiento);
@@ -131,9 +167,9 @@ export class ExpedientesService {
       );
     }
 
+    const estadoAnterior = item.estado_tc6;
     item.estado_tc6 = dto.nuevo_estado;
 
-    // If TC6 approved, update general state to en_certificacion
     if (dto.nuevo_estado === EstadoTC6.TC6_APROBADO) {
       item.estado_general = EstadoGeneral.EN_CERTIFICACION;
     } else if (
@@ -145,7 +181,16 @@ export class ExpedientesService {
 
     const saved = await this.expedienteRepository.save(item);
 
-    // Sync to establecimiento
+    // Registrar hito
+    await this.hitoRepository.save(
+      this.hitoRepository.create({
+        expediente_id: id,
+        estado_anterior: estadoAnterior,
+        estado_nuevo: dto.nuevo_estado,
+        observaciones: dto.observaciones,
+      }),
+    );
+
     const est = await this.establecimientoRepository.findOne({
       where: { id: item.establecimiento_id },
     });
@@ -157,6 +202,55 @@ export class ExpedientesService {
     return {
       data: saved,
       message: `Estado TC6 actualizado a ${dto.nuevo_estado}`,
+    };
+  }
+
+  async revertEstadoTC6(id: number, observaciones?: string) {
+    const item = await this.expedienteRepository.findOne({ where: { id } });
+    if (!item) {
+      throw new NotFoundException(`Expediente #${id} no encontrado`);
+    }
+
+    const estadoAnterior = TC6_REVERSE[item.estado_tc6];
+    if (estadoAnterior === null || estadoAnterior === undefined) {
+      throw new BadRequestException(
+        `No se puede deshacer el estado inicial (${item.estado_tc6}).`,
+      );
+    }
+
+    const estadoActual = item.estado_tc6;
+    item.estado_tc6 = estadoAnterior;
+
+    // Revert estado_general acorde
+    if (estadoAnterior === EstadoTC6.SIN_INICIAR) {
+      item.estado_general = EstadoGeneral.EN_LEVANTAMIENTO;
+    } else if (item.estado_general === EstadoGeneral.EN_CERTIFICACION) {
+      item.estado_general = EstadoGeneral.EN_PROYECTO;
+    }
+
+    const saved = await this.expedienteRepository.save(item);
+
+    // Registrar hito de reversión
+    await this.hitoRepository.save(
+      this.hitoRepository.create({
+        expediente_id: id,
+        estado_anterior: estadoActual,
+        estado_nuevo: estadoAnterior,
+        observaciones: observaciones ?? '↩ Reversión de estado TC6',
+      }),
+    );
+
+    const est = await this.establecimientoRepository.findOne({
+      where: { id: item.establecimiento_id },
+    });
+    if (est) {
+      est.estado_general = item.estado_general;
+      await this.establecimientoRepository.save(est);
+    }
+
+    return {
+      data: saved,
+      message: `Estado TC6 revertido a ${estadoAnterior}`,
     };
   }
 }

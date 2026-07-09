@@ -1,15 +1,18 @@
-import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsDateString,
-  IsArray,
-  ValidateNested,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsDateString, IsNumber, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoSello, TipoDefecto } from '../../common/enums';
 
 export class CreateCertificacionDto {
+  /** Local específico que se certifica */
+  @IsOptional()
+  @IsNumber()
+  local_id?: number;
+
+  /** Instalación específica que se certifica */
+  @IsOptional()
+  @IsNumber()
+  instalacion_id?: number;
+
   @IsOptional()
   @IsEnum(TipoSello)
   tipo_sello?: TipoSello;
@@ -41,6 +44,13 @@ export class CreateCertificacionDto {
   @IsOptional()
   @IsString()
   observaciones?: string;
+
+  /** Defectos incluidos en la creación (requerido si tipo_sello es amarillo o rojo) */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateDefectoDto)
+  defectos?: CreateDefectoDto[];
 }
 
 export class CreateDefectoDto {

@@ -349,7 +349,7 @@ export default function ExpedienteDetailPage() {
                     >
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <strong>Inspector: {cert.inspector_nombre}</strong>
+                          <strong>Inspector: {cert.nombre_inspector}</strong> 
                           <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
                             ({cert.entidad_certificadora})
                           </span>

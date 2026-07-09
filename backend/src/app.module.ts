@@ -17,6 +17,7 @@ import { Establecimiento } from './establecimientos/entities/establecimiento.ent
 import { Local } from './establecimientos/entities/local.entity';
 import { Instalacion } from './instalaciones/entities/instalacion.entity';
 import { Expediente } from './expedientes/entities/expediente.entity';
+import { HitoTC6 } from './expedientes/entities/hito-tc6.entity';
 import { Certificacion } from './certificaciones/entities/certificacion.entity';
 import { Defecto } from './certificaciones/entities/defecto.entity';
 import { Alerta } from './alertas/entities/alerta.entity';
@@ -38,6 +39,7 @@ import { Documento } from './documentos/entities/documento.entity';
         Local,
         Instalacion,
         Expediente,
+        HitoTC6,
         Certificacion,
         Defecto,
         Alerta,

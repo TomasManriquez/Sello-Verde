@@ -16,7 +16,7 @@ export function AlertChip({ alerta }: AlertChipProps) {
     <Link
       href={`/expedientes/${alerta.expediente_id}`}
       className={`alert-chip ${urgencyClass}`}
-      title={`${alerta.establecimiento_nombre ?? 'Expediente'} — ${alerta.tipo_alerta}`}
+      title={`${alerta.expediente?.establecimiento?.nombre ?? 'Expediente'} — ${alerta.tipo}`}
     >
       <span
         style={{
@@ -28,7 +28,7 @@ export function AlertChip({ alerta }: AlertChipProps) {
         }}
       />
       <span style={{ fontWeight: 600 }}>
-        {alerta.establecimiento_nombre ?? `Exp. #${alerta.expediente_id}`}
+        {alerta.expediente?.establecimiento?.nombre ?? `Exp. #${alerta.expediente_id}`}
       </span>
       <span style={{ opacity: 0.8 }}>
         {alerta.dias_restantes < 0

@@ -23,9 +23,10 @@ export class EstablecimientosController {
   @Get()
   findAll(
     @Query('rbd') rbd?: string,
+    @Query('search') search?: string,
     @Query('estado_general') estado_general?: EstadoGeneral,
   ) {
-    return this.service.findAll({ rbd, estado_general });
+    return this.service.findAll({ rbd, search, estado_general });
   }
 
   @Get(':id')

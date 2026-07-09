@@ -161,7 +161,7 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
               {locales.map(local => (
                 <tr key={local.id}>
                   <td style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-                    {local.numero}
+                    {local.numero_local}
                   </td>
                   <td>
                     <input
@@ -205,7 +205,7 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
         <section key={local.id} className="surface p-6">
           <div className="section-header">
             <h2 className="section-title">
-              C — Instalaciones: Local {local.numero} — {local.nombre || 'Sin nombre'}
+              C — Instalaciones: Local {local.numero_local} — {local.nombre || 'Sin nombre'}
             </h2>
             <Button variant="secondary" size="sm" onClick={() => addInstalacion(local.id)}>
               + Agregar instalación

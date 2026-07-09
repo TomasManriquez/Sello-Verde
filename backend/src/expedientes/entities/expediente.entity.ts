@@ -12,6 +12,8 @@ import { EstadoTC6, EstadoGeneral } from '../../common/enums';
 import { Establecimiento } from '../../establecimientos/entities/establecimiento.entity';
 import { Certificacion } from '../../certificaciones/entities/certificacion.entity';
 import { Documento } from '../../documentos/entities/documento.entity';
+import { HitoTC6 } from './hito-tc6.entity';
+import { Alerta } from '../../alertas/entities/alerta.entity';
 
 @Entity('expedientes')
 export class Expediente {
@@ -77,6 +79,12 @@ export class Expediente {
 
   @OneToMany(() => Documento, (doc) => doc.expediente)
   documentos: Documento[];
+
+  @OneToMany(() => HitoTC6, (hito) => hito.expediente)
+  hitos: HitoTC6[];
+
+  @OneToMany(() => Alerta, (alerta) => alerta.expediente)
+  alertas: Alerta[];
 
   @CreateDateColumn()
   created_at: Date;

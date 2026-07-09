@@ -461,7 +461,16 @@ export class SeedService implements OnApplicationBootstrap {
     // ========================
     // 4. INSTALACIONES (for gas-using locales)
     // ========================
-    await this.instalacionRepo.save([
+    const [
+      instalacionPhilippi,
+      instalacionLichaf,
+      instalacionInstituto,
+      _instalacionAlessandri,
+      _instalacionClaudioMatte,
+      instalacionGreenCollege,
+      instalacionMontessori,
+      instalacionLosLinares,
+    ] = await this.instalacionRepo.save([
       this.instalacionRepo.create({
         local_id: localPhilippi.id,
         tipo_gas: TipoGas.GLP,
@@ -709,6 +718,8 @@ export class SeedService implements OnApplicationBootstrap {
     const certPhilippi = await this.certificacionRepo.save(
       this.certificacionRepo.create({
         expediente_id: expPhilippi.id,
+        local_id: localPhilippi.id,
+        instalacion_id: instalacionPhilippi.id,
         tipo_sello: TipoSello.VERDE,
         nombre_inspector: 'Ingeniero Carlos Hoffmann',
         entidad_certificadora: 'SEC Chile',
@@ -722,6 +733,8 @@ export class SeedService implements OnApplicationBootstrap {
     const certLichaf = await this.certificacionRepo.save(
       this.certificacionRepo.create({
         expediente_id: expLichaf.id,
+        local_id: localLichaf.id,
+        instalacion_id: instalacionLichaf.id,
         tipo_sello: TipoSello.VERDE,
         nombre_inspector: 'Ing. María González',
         entidad_certificadora: 'SEC Chile',
@@ -735,6 +748,8 @@ export class SeedService implements OnApplicationBootstrap {
     const certInstituto = await this.certificacionRepo.save(
       this.certificacionRepo.create({
         expediente_id: expInstituto.id,
+        local_id: localInstituto.id,
+        instalacion_id: instalacionInstituto.id,
         tipo_sello: TipoSello.VERDE,
         nombre_inspector: 'Ing. Pedro Müller',
         entidad_certificadora: 'Certgas Austral',
@@ -750,6 +765,8 @@ export class SeedService implements OnApplicationBootstrap {
     const certGreenCollege = await this.certificacionRepo.save(
       this.certificacionRepo.create({
         expediente_id: expGreenCollege.id,
+        local_id: localesGreenCollege[0].id,
+        instalacion_id: instalacionGreenCollege.id,
         tipo_sello: TipoSello.ROJO,
         nombre_inspector: 'Ing. Roberto Siebert',
         entidad_certificadora: 'SEC Chile',
@@ -765,6 +782,8 @@ export class SeedService implements OnApplicationBootstrap {
     const certMontessori = await this.certificacionRepo.save(
       this.certificacionRepo.create({
         expediente_id: expMontessori.id,
+        local_id: localMontessori.id,
+        instalacion_id: instalacionMontessori.id,
         tipo_sello: TipoSello.AMARILLO,
         nombre_inspector: 'Ing. Ana Pérez',
         entidad_certificadora: 'Certgas Austral',
@@ -780,6 +799,8 @@ export class SeedService implements OnApplicationBootstrap {
     const certLosLinares = await this.certificacionRepo.save(
       this.certificacionRepo.create({
         expediente_id: expLosLinares.id,
+        local_id: localLosLinares.id,
+        instalacion_id: instalacionLosLinares.id,
         tipo_sello: TipoSello.AMARILLO,
         nombre_inspector: 'Ing. Luis Valdivia',
         entidad_certificadora: 'SEC Chile',
@@ -848,10 +869,11 @@ export class SeedService implements OnApplicationBootstrap {
       this.alertaRepo.create({
         expediente_id: expPhilippi.id,
         certificacion_id: certPhilippi.id,
+        instalacion_id: instalacionPhilippi.id,
         tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: addDays(fechaInspeccionPhilippi, 730),
-        mensaje: `Sello Verde Philippi vence el ${addDays(fechaInspeccionPhilippi, 730).toLocaleDateString('es-CL')}`,
+        mensaje: `Escuela Bernardo Philippi — Casino principal — Sello Verde vence el ${addDays(fechaInspeccionPhilippi, 730).toLocaleDateString('es-CL')}`,
       }),
     );
 
@@ -859,10 +881,11 @@ export class SeedService implements OnApplicationBootstrap {
       this.alertaRepo.create({
         expediente_id: expLichaf.id,
         certificacion_id: certLichaf.id,
+        instalacion_id: instalacionLichaf.id,
         tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: addDays(fechaInspeccionLichaf, 730),
-        mensaje: `Sello Verde LICHAF vence el ${addDays(fechaInspeccionLichaf, 730).toLocaleDateString('es-CL')}`,
+        mensaje: `Liceo Industrial LICHAF — Casino central — Sello Verde vence el ${addDays(fechaInspeccionLichaf, 730).toLocaleDateString('es-CL')}`,
       }),
     );
 
@@ -870,10 +893,11 @@ export class SeedService implements OnApplicationBootstrap {
       this.alertaRepo.create({
         expediente_id: expInstituto.id,
         certificacion_id: certInstituto.id,
+        instalacion_id: instalacionInstituto.id,
         tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: addDays(fechaInspeccionInstituto, 730),
-        mensaje: `Sello Verde Instituto Alemán vence el ${addDays(fechaInspeccionInstituto, 730).toLocaleDateString('es-CL')}`,
+        mensaje: `Instituto Alemán de Frutillar — Zona casino — Sello Verde vence el ${addDays(fechaInspeccionInstituto, 730).toLocaleDateString('es-CL')}`,
       }),
     );
 
@@ -882,6 +906,7 @@ export class SeedService implements OnApplicationBootstrap {
       this.alertaRepo.create({
         expediente_id: expGreenCollege.id,
         certificacion_id: certGreenCollege.id,
+        instalacion_id: instalacionGreenCollege.id,
         tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: addDays(fechaInspeccionGreen, 90),
@@ -893,6 +918,7 @@ export class SeedService implements OnApplicationBootstrap {
       this.alertaRepo.create({
         expediente_id: expMontessori.id,
         certificacion_id: certMontessori.id,
+        instalacion_id: instalacionMontessori.id,
         tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: addDays(fechaInspeccionMontessori, 90),
@@ -904,6 +930,7 @@ export class SeedService implements OnApplicationBootstrap {
       this.alertaRepo.create({
         expediente_id: expLosLinares.id,
         certificacion_id: certLosLinares.id,
+        instalacion_id: instalacionLosLinares.id,
         tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: addDays(fechaInspeccionLinares, 90),

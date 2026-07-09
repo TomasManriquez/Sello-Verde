@@ -16,30 +16,57 @@ export class EstablecimientosService {
     private localRepository: Repository<Local>,
   ) {}
 
-  async findAll(filters?: { rbd?: string; estado_general?: EstadoGeneral }) {
-    const qb = this.establecimientoRepository
-      .createQueryBuilder('est')
-      .leftJoinAndSelect('est.locales', 'locales')
-      .leftJoin('est.expedientes', 'expediente')
-      .addSelect(['expediente.id', 'expediente.estado_general', 'expediente.estado_tc6'])
-      .orderBy('est.nombre', 'ASC');
+  async findAll(filters?: { rbd?: string; search?: string; estado_general?: EstadoGeneral }) {
+    // find() con relations es más robusto que QueryBuilder para joins anidados
+    let items = await this.establecimientoRepository.find({
+      relations: [
+        'locales',
+        'expedientes',
+        'expedientes.certificaciones',
+        'expedientes.alertas',
+      ],
+      order: { nombre: 'ASC' },
+    });
 
+    // Filtros en memoria (escala MVP aceptable)
     if (filters?.rbd) {
-      qb.andWhere('est.rbd ILIKE :rbd', { rbd: `%${filters.rbd}%` });
+      const rbd = filters.rbd.toLowerCase();
+      items = items.filter(e => e.rbd.toLowerCase().includes(rbd));
     }
-
+    if (filters?.search) {
+      const s = filters.search.toLowerCase();
+      items = items.filter(e =>
+        e.nombre.toLowerCase().includes(s) ||
+        e.rbd.toLowerCase().includes(s) ||
+        (e.comuna ?? '').toLowerCase().includes(s),
+      );
+    }
     if (filters?.estado_general) {
-      qb.andWhere('est.estado_general = :estado', {
-        estado: filters.estado_general,
-      });
+      items = items.filter(e => e.estado_general === filters.estado_general);
     }
 
-    const items = await qb.getMany();
+    // Mapear expediente_activo = el más reciente (mayor id)
+    const withActiveExpediente = items.map(est => {
+      let expediente_activo = undefined;
+      if (est.expedientes && est.expedientes.length > 0) {
+        const sorted = [...est.expedientes].sort((a, b) => b.id - a.id);
+        expediente_activo = sorted[0];
+        // Ordenar certificaciones por fecha desc: [0] es la más reciente
+        if (expediente_activo.certificaciones) {
+          expediente_activo.certificaciones.sort(
+            (a, b) =>
+              new Date(b.fecha_inspeccion).getTime() -
+              new Date(a.fecha_inspeccion).getTime(),
+          );
+        }
+      }
+      return { ...est, expediente_activo };
+    });
 
     return {
-      data: items,
+      data: withActiveExpediente,
       message: 'OK',
-      total: items.length,
+      total: withActiveExpediente.length,
     };
   }
 

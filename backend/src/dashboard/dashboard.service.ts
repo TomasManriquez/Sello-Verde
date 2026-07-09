@@ -94,13 +94,14 @@ export class DashboardService {
         estado: EstadoAlerta.ACTIVA,
         fecha_vencimiento: LessThanOrEqual(in30Days),
       },
-      relations: ['expediente', 'expediente.establecimiento'],
+      relations: ['expediente', 'expediente.establecimiento', 'instalacion', 'instalacion.local'],
       order: { fecha_vencimiento: 'ASC' },
     });
 
     const withDays = alertas.map((alerta) => {
       const today = new Date();
       const expiry = new Date(alerta.fecha_vencimiento);
+      if (isNaN(expiry.getTime())) return { ...alerta, dias_restantes: null };
       const diffTime = expiry.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       return { ...alerta, dias_restantes: diffDays };

@@ -39,6 +39,17 @@ export default function EstablecimientoDetailPage() {
   const [startingExpediente, setStartingExpediente] = useState(false);
   const [expedienteError, setExpedienteError] = useState<string | null>(null);
 
+  // Edit EE Modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editData, setEditData] = useState({
+    nombre: '',
+    direccion: '',
+    comuna: '',
+    nombre_propietario: '',
+  });
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const loadData = () => {
     setLoading(true);
     establecimientosApi.get(id)
@@ -50,6 +61,14 @@ export default function EstablecimientoDetailPage() {
         // Pre-fill next local number
         const nextNum = (data.locales ?? []).reduce((max, l) => l.numero_local > max ? l.numero_local : max, 0) + 1;
         setNewLocal(prev => ({ ...prev, numero_local: nextNum }));
+
+        // Pre-fill edit data
+        setEditData({
+          nombre: data.nombre ?? '',
+          direccion: data.direccion ?? '',
+          comuna: data.comuna ?? '',
+          nombre_propietario: data.nombre_propietario ?? data.propietario ?? '',
+        });
       })
       .catch(err => {
         setError(err.message || 'Error al cargar los detalles del establecimiento');
@@ -112,6 +131,21 @@ export default function EstablecimientoDetailPage() {
     }
   };
 
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditing(true);
+    setEditError(null);
+    try {
+      const updated = await establecimientosApi.update(id, editData);
+      setEe(prev => prev ? { ...prev, ...updated } : updated);
+      setEditModalOpen(false);
+    } catch (err: any) {
+      setEditError(err.message || 'Error al actualizar establecimiento');
+    } finally {
+      setEditing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -152,6 +186,9 @@ export default function EstablecimientoDetailPage() {
             <Badge estado={ee.estado_general} />
           </div>
         </div>
+        <Button variant="secondary" size="sm" onClick={() => setEditModalOpen(true)}>
+          ✏️ Editar
+        </Button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-6)', alignItems: 'start' }}>
@@ -171,9 +208,15 @@ export default function EstablecimientoDetailPage() {
                 <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Dirección</span>
                 <strong>{ee.direccion}</strong>
               </div>
+              {ee.comuna && (
+                <div>
+                  <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Comuna</span>
+                  <strong>{ee.comuna}</strong>
+                </div>
+              )}
               <div>
                 <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Representante / Propietario</span>
-                <strong>{ee.propietario}</strong>
+                <strong>{ee.nombre_propietario ?? ee.propietario}</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Cantidad de Locales</span>
@@ -367,6 +410,47 @@ export default function EstablecimientoDetailPage() {
             </Button>
             <Button type="submit" loading={startingExpediente}>
               Iniciar Expediente
+            </Button>
+          </div>
+        </form>
+      </Modal>
+      {/* Edit Establecimiento Modal */}
+      <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} title="Editar Establecimiento">
+        <form onSubmit={handleEdit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {editError && (
+            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>
+              ⚠️ {editError}
+            </div>
+          )}
+          <Input
+            label="Nombre del Establecimiento"
+            value={editData.nombre}
+            onChange={e => setEditData(prev => ({ ...prev, nombre: e.target.value }))}
+            required
+          />
+          <Input
+            label="Dirección"
+            value={editData.direccion}
+            onChange={e => setEditData(prev => ({ ...prev, direccion: e.target.value }))}
+            required
+          />
+          <Input
+            label="Comuna"
+            value={editData.comuna}
+            onChange={e => setEditData(prev => ({ ...prev, comuna: e.target.value }))}
+          />
+          <Input
+            label="Propietario / Representante"
+            value={editData.nombre_propietario}
+            onChange={e => setEditData(prev => ({ ...prev, nombre_propietario: e.target.value }))}
+            required
+          />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+            <Button type="button" variant="secondary" onClick={() => setEditModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={editing}>
+              Guardar Cambios
             </Button>
           </div>
         </form>

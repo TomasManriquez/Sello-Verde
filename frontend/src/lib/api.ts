@@ -254,9 +254,14 @@ export interface Establecimiento {
   rbd: string;
   nombre: string;
   direccion: string;
-  propietario: string;
+  comuna?: string;
+  region?: string;
+  nombre_propietario?: string;
+  propietario?: string; // alias legacy
   estado_general: string;
+  cantidad_locales?: number;
   locales?: Local[];
+  expedientes?: Expediente[];
   expediente_activo?: Expediente;
   created_at: string;
   updated_at: string;
@@ -303,12 +308,19 @@ export interface Expediente {
 export interface Certificacion {
   id: number;
   expediente_id: number;
-  inspector_nombre: string;
-  entidad_certificadora: string;
-  rut_inspector: string;
+  local_id?: number;
+  instalacion_id?: number;
+  local?: Local;
+  instalacion?: Instalacion;
+  nombre_inspector?: string;
+  entidad_certificadora?: string;
+  rut_inspector?: string;
   fecha_inspeccion: string;
   tipo_sello: string;
+  numero_certificado?: string;
+  observaciones?: string;
   defectos?: Defecto[];
+  alertas?: Alerta[];
   created_at: string;
 }
 
@@ -332,11 +344,18 @@ export interface Documento {
 export interface Alerta {
   id: number;
   expediente_id: number;
-  establecimiento_nombre?: string;
-  tipo_alerta: string;
+  certificacion_id?: number;
+  instalacion_id?: number;
+  instalacion?: Instalacion & { local?: Local };
+  expediente?: Expediente & { establecimiento?: Establecimiento };
+  // Tipo de alerta: campo real del backend
+  tipo: string;
+  /** Alias legacy para componentes que usen tipo_alerta */
+  tipo_alerta?: string;
   estado: string;
   fecha_vencimiento: string;
   dias_restantes: number;
+  mensaje?: string;
   created_at: string;
 }
 

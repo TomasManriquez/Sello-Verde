@@ -10,6 +10,7 @@ import {
 import { TipoAlerta, EstadoAlerta } from '../../common/enums';
 import { Expediente } from '../../expedientes/entities/expediente.entity';
 import { Certificacion } from '../../certificaciones/entities/certificacion.entity';
+import { Instalacion } from '../../instalaciones/entities/instalacion.entity';
 
 @Entity('alertas')
 export class Alerta {
@@ -19,7 +20,7 @@ export class Alerta {
   @Column()
   expediente_id: number;
 
-  @ManyToOne(() => Expediente)
+  @ManyToOne(() => Expediente, (exp) => exp.alertas)
   @JoinColumn({ name: 'expediente_id' })
   expediente: Expediente;
 
@@ -29,6 +30,14 @@ export class Alerta {
   @ManyToOne(() => Certificacion, (cert) => cert.alertas, { nullable: true })
   @JoinColumn({ name: 'certificacion_id' })
   certificacion: Certificacion;
+
+  /** Instalación específica a la que aplica la alerta (para lifecycle por instalación) */
+  @Column({ nullable: true })
+  instalacion_id: number;
+
+  @ManyToOne(() => Instalacion, { nullable: true })
+  @JoinColumn({ name: 'instalacion_id' })
+  instalacion: Instalacion;
 
   @Column({
     type: 'enum',

@@ -8,7 +8,6 @@ export class UpdateAlertaDto {
 
 export class FilterAlertaDto {
   @IsOptional()
-  @IsEnum(TipoAlerta)
   tipo?: TipoAlerta;
 
   @IsOptional()

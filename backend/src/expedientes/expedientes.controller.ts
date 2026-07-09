@@ -48,4 +48,12 @@ export class ExpedientesController {
   ) {
     return this.service.updateEstadoTC6(id, dto);
   }
+
+  @Patch(':id/revert-tc6')
+  revertEstadoTC6(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('observaciones') observaciones?: string,
+  ) {
+    return this.service.revertEstadoTC6(id, observaciones);
+  }
 }

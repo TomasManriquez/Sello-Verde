@@ -6,6 +6,8 @@ import { Certificacion } from './entities/certificacion.entity';
 import { Defecto } from './entities/defecto.entity';
 import { Expediente } from '../expedientes/entities/expediente.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
+import { Local } from '../establecimientos/entities/local.entity';
+import { Instalacion } from '../instalaciones/entities/instalacion.entity';
 import { Alerta } from '../alertas/entities/alerta.entity';
 
 @Module({
@@ -15,6 +17,8 @@ import { Alerta } from '../alertas/entities/alerta.entity';
       Defecto,
       Expediente,
       Establecimiento,
+      Local,
+      Instalacion,
       Alerta,
     ]),
   ],

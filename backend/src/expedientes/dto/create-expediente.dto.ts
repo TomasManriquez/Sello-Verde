@@ -67,4 +67,8 @@ export class CreateExpedienteDto {
 export class UpdateEstadoTC6Dto {
   @IsEnum(EstadoTC6)
   nuevo_estado: EstadoTC6;
+
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
 }

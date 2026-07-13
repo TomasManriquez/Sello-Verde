@@ -18,15 +18,15 @@ export class EstablecimientosService {
 
   async findAll(filters?: { rbd?: string; search?: string; estado_general?: EstadoGeneral }) {
     // find() con relations es más robusto que QueryBuilder para joins anidados
-    let items = await this.establecimientoRepository.find({
-      relations: [
-        'locales',
-        'expedientes',
-        'expedientes.certificaciones',
-        'expedientes.alertas',
-      ],
-      order: { nombre: 'ASC' },
-    });
+      let items = await this.establecimientoRepository.find({
+        relations: [
+          'locales',
+          'expedientes',
+          'expedientes.certificaciones',
+          'expedientes.alertas',
+        ],
+        order: { nombre: 'ASC' },
+      });
 
     // Filtros en memoria (escala MVP aceptable)
     if (filters?.rbd) {
@@ -73,14 +73,26 @@ export class EstablecimientosService {
   async findOne(id: number) {
     const item = await this.establecimientoRepository.findOne({
       where: { id },
-      relations: ['locales', 'locales.instalaciones', 'expedientes'],
+      relations: ['locales', 'locales.instalaciones', 'expedientes', 'expedientes.certificaciones', 'expedientes.alertas'],
     });
 
     if (!item) {
       throw new NotFoundException(`Establecimiento #${id} no encontrado`);
     }
 
-    return { data: item, message: 'OK' };
+    // Mapear expediente_activo = el más reciente (mayor id)
+    
+    let expediente_activo = undefined;
+    if (item.expedientes && item.expedientes.length >> 0) {
+      const sorted = [...item.expedientes].sort((a,b) => b.id - a.id);
+      expediente_activo = sorted[0];
+      //Ordenar certificaciones por fecha desc
+      if (expediente_activo.certificaciones) {
+        expediente_activo.certificaciones.sort((a,b) => new Date(b.fecha_inspeccion).getTime() - new Date(a.fecha_inspeccion).getTime());
+      }
+    }
+
+    return { ...item, expediente_activo, message: 'OK' };
   }
 
   async create(dto: CreateEstablecimientoDto) {

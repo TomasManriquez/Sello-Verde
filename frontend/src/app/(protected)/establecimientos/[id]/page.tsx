@@ -31,6 +31,7 @@ export default function EstablecimientoDetailPage() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   // Start Expediente Modal state
+  const [expediente, setExpediente] = useState<Expediente | null>(null);
   const [expedienteModalOpen, setExpedienteModalOpen] = useState(false);
   const [newExpediente, setNewExpediente] = useState({
     empresa_instaladora: '',
@@ -57,7 +58,7 @@ export default function EstablecimientoDetailPage() {
         setEe(data);
         setLocales(data.locales ?? []);
         setError(null);
-
+        
         // Pre-fill next local number
         const nextNum = (data.locales ?? []).reduce((max, l) => l.numero_local > max ? l.numero_local : max, 0) + 1;
         setNewLocal(prev => ({ ...prev, numero_local: nextNum }));

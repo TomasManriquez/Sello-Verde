@@ -308,9 +308,9 @@ export default function ExpedienteDetailPage() {
                     <tbody>
                       {docs.map(doc => (
                         <tr key={doc.id}>
-                          <td style={{ fontWeight: 600 }}>{doc.nombre}</td>
+                          <td style={{ fontWeight: 600 }}>{doc.nombre_original}</td>
                           <td>{formatDate(doc.created_at)}</td>
-                          <td>{formatBytes(doc.tamanio)}</td>
+                          <td>{formatBytes(doc.tamano_bytes)}</td>
                           <td style={{ textAlign: 'right' }}>
                             <Button as="a" href={doc.url} target="_blank" rel="noopener noreferrer" variant="ghost" size="sm">
                               Descargar

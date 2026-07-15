@@ -334,10 +334,10 @@ export interface Defecto {
 export interface Documento {
   id: number;
   expediente_id: number;
-  nombre: string;
+  nombre_original: string;
   url: string;
   tipo_mime: string;
-  tamanio: number;
+  tamano_bytes: number;
   created_at: string;
 }
 

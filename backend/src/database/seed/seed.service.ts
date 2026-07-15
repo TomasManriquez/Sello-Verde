@@ -46,6 +46,12 @@ export class SeedService implements OnApplicationBootstrap {
   ) { }
 
   async onApplicationBootstrap() {
+
+    if (process.env.NODE_ENV !== 'development') {
+      this.logger.log('Skipping database seeding in non-development environment.');
+      return;
+    }
+    
     const count = await this.usuarioRepo.count();
     if (count > 0) {
       this.logger.log('Database already seeded, skipping...');

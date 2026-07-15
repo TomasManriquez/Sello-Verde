@@ -1,8 +1,19 @@
 // ── Constants — Sello Verde ──────────────────────────────────
 
+/**
+ * Root of the backend API (includes /api prefix).
+ * Used for all REST calls.
+ */
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : 'http://localhost:3001/api';
+
+/**
+ * Host origin of the backend (NO /api suffix).
+ * Used to build absolute URLs for static files served from /uploads/...
+ * In production: set NEXT_PUBLIC_API_URL=https://api.selloverde.cl
+ */
+export const API_HOST = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 export const TOKEN_KEY = 'sv_token';
 

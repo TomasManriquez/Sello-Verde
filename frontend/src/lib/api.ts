@@ -1,4 +1,21 @@
-import { API_BASE, TOKEN_KEY } from './constants';
+import { API_BASE, API_HOST, TOKEN_KEY } from './constants';
+
+// ── File URL helper ──────────────────────────────────────────
+/**
+ * Builds an absolute URL for a static file given its relative path.
+ * The relative path comes from the backend (e.g. "/uploads/expedientes/4/file.pdf").
+ * In production, NEXT_PUBLIC_API_URL controls the host.
+ *
+ * @example buildFileUrl('/uploads/expedientes/4/file.pdf')
+ * // → 'http://localhost:3001/uploads/expedientes/4/file.pdf'  (dev)
+ * // → 'https://api.selloverde.cl/uploads/expedientes/4/file.pdf'  (prod)
+ */
+export function buildFileUrl(relativePath: string): string {
+  if (!relativePath) return '';
+  const base = API_HOST.replace(/\/$/, '');
+  const path = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+  return `${base}${path}`;
+}
 
 // ── Types ────────────────────────────────────────────────────
 export class ApiError extends Error {
@@ -217,6 +234,13 @@ export const documentosApi = {
     fd.append('file', file);
     return api.upload<Documento>(`/expedientes/${expedienteId}/documentos`, fd);
   },
+  rename(id: number | string, nombre: string) {
+    return api.patch<Documento>(`/documentos/${id}/renombrar`, { nombre });
+  },
+  /** Returns the absolute download URL for a document (forces download via Content-Disposition). */
+  downloadUrl(id: number | string): string {
+    return `${API_BASE}/documentos/${id}/descargar`;
+  },
   delete(id: number | string) {
     return api.delete(`/documentos/${id}`);
   },
@@ -335,10 +359,14 @@ export interface Documento {
   id: number;
   expediente_id: number;
   nombre_original: string;
+  nombre_archivo: string;
+  descripcion?: string;
+  /** Relative path from backend, e.g. "/uploads/expedientes/4/file.pdf" */
   url: string;
   tipo_mime: string;
   tamano_bytes: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Alerta {

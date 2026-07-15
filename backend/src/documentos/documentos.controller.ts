@@ -2,57 +2,65 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Param,
   ParseIntPipe,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { join } from 'path';
+import { Response } from 'express';
 import { DocumentosService } from './documentos.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import * as fs from 'fs';
+
+// ── Multer storage config ─────────────────────────────────────
+const expedienteStorage = diskStorage({
+  destination: (req, file, cb) => {
+    const expedienteId = req.params.expedienteId;
+    const uploadDir = join('uploads', 'expedientes', expedienteId.toString());
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Sanitize the original filename: replace spaces and special chars
+    const sanitized = file.originalname
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9._\-áéíóúÁÉÍÓÚñÑ]/g, '');
+    cb(null, sanitized);
+  },
+});
 
 @UseGuards(JwtAuthGuard)
 @Controller('expedientes')
 export class DocumentosController {
   constructor(private readonly service: DocumentosService) {}
 
+  // ── GET /api/expedientes/:expedienteId/documentos ─────────────
   @Get(':expedienteId/documentos')
   findByExpediente(@Param('expedienteId', ParseIntPipe) expedienteId: number) {
     return this.service.findByExpediente(expedienteId);
   }
 
+  // ── POST /api/expedientes/:expedienteId/documentos ────────────
+  // Accepts multipart/form-data with field "file"
+  // If a document with the same original name already exists → overwrites it
   @Post(':expedienteId/documentos')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: async (req, file, cb) => {
-          // Get expedienteId from params
-          const expedienteId = req.params.expedienteId;
-          
-          // We need the establecimientoId to create a clean folder structure
-          // We'll fetch it via a service call or look it up in the DB
-          // For now, we use a dedicated subfolder to avoid root pollution
-          const uploadDir = join('uploads', 'expedientes', expedienteId.toString());
-          
-          if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-          }
-          
-          cb(null, uploadDir);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
+      storage: expedienteStorage,
       limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB max
+        fileSize: 50 * 1024 * 1024, // 50 MB
       },
     }),
   )
@@ -63,14 +71,42 @@ export class DocumentosController {
   ) {
     return this.service.create(expedienteId, file, descripcion);
   }
+}
 
-  // @Get(':expedienteId/:filename')
-  // download(
-  //   @Param('expedienteId', ParseIntPipe) expedienteId: number,
-  //   @Param('filename') filename: string,
-  //   @Res() res: any,
-  // ) {
-  //   const filePath = join('uploads', 'expedientes', expedienteId.toString(), filename);
-  //   res.download(filePath);
-  // }
+// ── Separate controller for /api/documentos/:id/* ─────────────
+@UseGuards(JwtAuthGuard)
+@Controller('documentos')
+export class DocumentosItemController {
+  constructor(private readonly service: DocumentosService) {}
+
+  // ── GET /api/documentos/:id/descargar ─────────────────────────
+  // Forces a file download with Content-Disposition: attachment
+  @Get(':id/descargar')
+  async descargar(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const { filePath, nombreOriginal } = await this.service.getFilePath(id);
+
+    res.download(filePath, nombreOriginal, (err) => {
+      if (err && !res.headersSent) {
+        res.status(500).json({ message: 'Error al descargar el archivo' });
+      }
+    });
+  }
+
+  // ── PATCH /api/documentos/:id/renombrar ───────────────────────
+  @Patch(':id/renombrar')
+  rename(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('nombre') nombre: string,
+  ) {
+    return this.service.rename(id, nombre);
+  }
+
+  // ── DELETE /api/documentos/:id ────────────────────────────────
+  @Delete(':id')
+  delete(@Param('id', ParseIntPipe) id: number) {
+    return this.service.delete(id);
+  }
 }

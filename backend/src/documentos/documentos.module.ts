@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MulterModule } from '@nestjs/platform-express';
-import { DocumentosController } from './documentos.controller';
+import { DocumentosController, DocumentosItemController } from './documentos.controller';
 import { DocumentosService } from './documentos.service';
 import { Documento } from './entities/documento.entity';
 import { Expediente } from '../expedientes/entities/expediente.entity';
@@ -13,7 +13,8 @@ import { Expediente } from '../expedientes/entities/expediente.entity';
       dest: 'uploads/',
     }),
   ],
-  controllers: [DocumentosController],
+  controllers: [DocumentosController, DocumentosItemController],
   providers: [DocumentosService],
+  exports: [DocumentosService],
 })
 export class DocumentosModule {}

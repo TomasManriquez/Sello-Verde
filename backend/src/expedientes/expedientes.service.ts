@@ -89,7 +89,15 @@ export class ExpedientesService {
       order: { fecha_vencimiento: 'ASC' },
     });
 
-    return { data: { ...item, alertas }, message: 'OK' };
+    // Normalise nested documents: add the relative URL so the frontend
+    // can build the full absolute URL via API_HOST + doc.url
+    const documentos = (item.documentos ?? []).map((doc) => {
+      const normalized = doc.ruta.replace(/\\/g, '/');
+      const url = normalized.startsWith('/') ? normalized : `/${normalized}`;
+      return { ...doc, url };
+    });
+
+    return { data: { ...item, documentos, alertas }, message: 'OK' };
   }
 
   async create(dto: CreateExpedienteDto) {

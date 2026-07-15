@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { expedientesApi, documentosApi, certificacionesApi, alertasApi, Expediente, Documento, Certificacion, Alerta, ApiError } from '@/lib/api';
+import { expedientesApi, documentosApi, certificacionesApi, alertasApi, Expediente, Documento, Certificacion, Alerta, ApiError, getToken } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Stepper } from '@/components/ui/Stepper';
@@ -26,6 +26,14 @@ export default function ExpedienteDetailPage() {
   // File upload state
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Rename state
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+
+  // Delete state
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // TC6 State change loading
   const [advancingTc6, setAdvancingTc6] = useState(false);
@@ -60,12 +68,77 @@ export default function ExpedienteDetailPage() {
     setUploadError(null);
     try {
       const uploaded = await documentosApi.upload(id, file);
-      setDocs(prev => [uploaded, ...prev]);
+      // If same name → overwrite in list; otherwise prepend
+      setDocs(prev => {
+        const idx = prev.findIndex(d => d.nombre_original === uploaded.nombre_original);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = uploaded;
+          return next;
+        }
+        return [uploaded, ...prev];
+      });
     } catch (err: any) {
       setUploadError(err.message || 'Error al subir documento');
     } finally {
       setUploading(false);
       e.target.value = ''; // reset file input
+    }
+  };
+
+  const handleRenameStart = (doc: Documento) => {
+    setRenamingId(doc.id);
+    setRenameValue(doc.nombre_original);
+  };
+
+  const handleRenameConfirm = async () => {
+    if (!renamingId) return;
+    setRenameLoading(true);
+    try {
+      const updated = await documentosApi.rename(renamingId, renameValue);
+      setDocs(prev => prev.map(d => d.id === renamingId ? updated : d));
+      setRenamingId(null);
+    } catch (err: any) {
+      alert(err.message || 'Error al renombrar');
+    } finally {
+      setRenameLoading(false);
+    }
+  };
+
+  const handleDelete = async (docId: number) => {
+    if (!confirm('¿Eliminar este documento? Esta acción no se puede deshacer.')) return;
+    setDeletingId(docId);
+    try {
+      await documentosApi.delete(docId);
+      setDocs(prev => prev.filter(d => d.id !== docId));
+    } catch (err: any) {
+      alert(err.message || 'Error al eliminar');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  /**
+   * Downloads a document with authentication token injected.
+   * The backend endpoint is JWT-protected, so we must pass the Bearer token.
+   */
+  const handleDownload = async (doc: Documento) => {
+    const token = getToken();
+    const url = documentosApi.downloadUrl(doc.id);
+    try {
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = doc.nombre_original;
+      a.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: any) {
+      alert(err.message || 'Error al descargar el archivo');
     }
   };
 
@@ -302,19 +375,90 @@ export default function ExpedienteDetailPage() {
                         <th>Nombre del archivo</th>
                         <th>Fecha Subida</th>
                         <th>Tamaño</th>
-                        <th style={{ textAlign: 'right' }}>Acción</th>
+                        <th style={{ textAlign: 'right' }}>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {docs.map(doc => (
                         <tr key={doc.id}>
-                          <td style={{ fontWeight: 600 }}>{doc.nombre_original}</td>
+                          <td style={{ fontWeight: 600, maxWidth: '220px' }}>
+                            {renamingId === doc.id ? (
+                              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                                <input
+                                  autoFocus
+                                  value={renameValue}
+                                  onChange={e => setRenameValue(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') handleRenameConfirm();
+                                    if (e.key === 'Escape') setRenamingId(null);
+                                  }}
+                                  style={{
+                                    flex: 1,
+                                    padding: 'var(--space-1) var(--space-2)',
+                                    border: '1px solid var(--color-primary)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontFamily: 'inherit',
+                                    fontSize: 'var(--text-sm)',
+                                    background: 'var(--color-bg)',
+                                    color: 'var(--color-text)',
+                                  }}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={handleRenameConfirm}
+                                  loading={renameLoading}
+                                  style={{ padding: 'var(--space-1) var(--space-2)' }}
+                                >
+                                  ✓
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setRenamingId(null)}
+                                  style={{ padding: 'var(--space-1) var(--space-2)' }}
+                                >
+                                  ✕
+                                </Button>
+                              </div>
+                            ) : (
+                              <span title={doc.nombre_original} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {doc.nombre_original}
+                              </span>
+                            )}
+                          </td>
                           <td>{formatDate(doc.created_at)}</td>
                           <td>{formatBytes(doc.tamano_bytes)}</td>
                           <td style={{ textAlign: 'right' }}>
-                            <Button as="a" href={doc.url} target="_blank" rel="noopener noreferrer" variant="ghost" size="sm">
-                              Descargar
-                            </Button>
+                            <div style={{ display: 'flex', gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDownload(doc)}
+                                title="Descargar archivo"
+                              >
+                                ⬇️ Descargar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRenameStart(doc)}
+                                title="Renombrar archivo"
+                                style={{ color: 'var(--color-text-muted)' }}
+                              >
+                                ✏️
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(doc.id)}
+                                loading={deletingId === doc.id}
+                                title="Eliminar archivo"
+                                style={{ color: 'var(--color-rojo)' }}
+                              >
+                                🗑️
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}

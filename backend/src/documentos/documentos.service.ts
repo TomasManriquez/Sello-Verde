@@ -31,7 +31,13 @@ export class DocumentosService {
       order: { created_at: 'DESC' },
     });
 
-    return { data: items, message: 'OK' };
+    // Map items to include the full public URL
+    const data = items.map(doc => ({
+      ...doc,
+      url: `http://localhost:3001/uploads/${doc.ruta.replace('uploads/', '')}`.replace('uploads//', 'uploads/')
+    }));
+
+    return { data, message: 'OK' };
   }
 
   async create(

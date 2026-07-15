@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { EstablecimientosModule } from './establecimientos/establecimientos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
@@ -51,6 +53,12 @@ import { Documento } from './documentos/entities/documento.entity';
 
     // Cron scheduling
     ScheduleModule.forRoot(),
+
+    // Static files serving
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', '..', 'uploads'),
+      serveRoot: '/uploads',
+    }),
 
     // Feature modules
     AuthModule,

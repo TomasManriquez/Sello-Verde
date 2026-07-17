@@ -47,11 +47,13 @@ services:
       dockerfile: Dockerfile.prod
     container_name: sello_verde_backend
     restart: always
-    expose:
-      - "3001"
+    ports:
+      - "3001:3001"
     environment:
       NODE_ENV: production
       # Base de datos (resuelto por DNS interno de Docker)
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       DATABASE_HOST: db
       DATABASE_PORT: 5432
       DATABASE_USER: ${DB_USER}

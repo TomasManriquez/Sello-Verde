@@ -68,17 +68,31 @@ export class SeedService implements OnApplicationBootstrap {
 // Se extrae la logica de creacion del usuario administrador 
 //
   private async initialSetup() {
-  const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'slep2024', 10);
-  const admin = await this.usuarioRepo.save(
-    this.usuarioRepo.create({
-      nombre: 'Administrador SLEP',
-      email: process.env.ADMIN_EMAIL || 'admin@slepllanquihue.cl',
-      password_hash: passwordHash,
-      rol: 'admin',
-      activo: true,
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@slepllanquihue.cl';
+      
+      // Buscar específicamente si ESTE admin ya existe
+    const existingAdmin = await this.usuarioRepo.findOne({ 
+      where: { email: adminEmail } 
+    });
+
+    if (existingAdmin) {
+      this.logger.log(`Admin user ${adminEmail} already exists, skipping creation.`);
+      return;
+    }
+
+      // Si no existe, lo creamos
+    const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'slep2024', 10);
+    const admin = await this.usuarioRepo.save(
+      this.usuarioRepo.create({
+        nombre: 'Administrador SLEP',
+        email: adminEmail,
+        password_hash: passwordHash,
+        rol: 'admin',
+        activo: true,
       }), 
-  )
-  this.logger.log(`Created admin user: ${admin.email}`);
+    );
+    this.logger.log(`Created admin user: ${admin.email}`);
   }
 
   private async seed() {

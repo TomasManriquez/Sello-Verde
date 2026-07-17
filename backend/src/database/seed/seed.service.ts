@@ -48,6 +48,7 @@ export class SeedService implements OnApplicationBootstrap {
   async onApplicationBootstrap() {
 
     if (process.env.NODE_ENV !== 'development') {
+      await this.initialSetup();
       this.logger.log('Skipping database seeding in non-development environment.');
       return;
     }
@@ -59,25 +60,43 @@ export class SeedService implements OnApplicationBootstrap {
     }
 
     this.logger.log('🌱 Seeding database with initial data...');
+    await this.initialSetup();
     await this.seed();
     this.logger.log('✅ Database seeded successfully!');
+  }
+//
+// Se extrae la logica de creacion del usuario administrador 
+//
+  private async initialSetup() {
+  const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'slep2024', 10);
+  const admin = await this.usuarioRepo.save(
+    this.usuarioRepo.create({
+      nombre: 'Administrador SLEP',
+      email: process.env.ADMIN_EMAIL || 'admin@slepllanquihue.cl',
+      password_hash: passwordHash,
+      rol: 'admin',
+      activo: true,
+      }), 
+  )
+  this.logger.log(`Created admin user: ${admin.email}`);
   }
 
   private async seed() {
     // ========================
     // 1. ADMIN USER
     // ========================
-    const passwordHash = await bcrypt.hash('slep2024', 10);
-    const admin = await this.usuarioRepo.save(
-      this.usuarioRepo.create({
-        nombre: 'Administrador SLEP',
-        email: 'admin@slep.cl',
-        password_hash: passwordHash,
-        rol: 'admin',
-        activo: true,
-      }),
-    );
-    this.logger.log(`Created admin user: ${admin.email}`);
+    
+    // const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'slep2024', 10);
+    // const admin = await this.usuarioRepo.save(
+    //   this.usuarioRepo.create({
+    //     nombre: 'Administrador SLEP',
+    //     email: process.env.ADMIN_EMAIL || 'admin@slepllanquihue.cl',
+    //     password_hash: passwordHash,
+    //     rol: 'admin',
+    //     activo: true,
+    //   }),
+    // );
+    //this.logger.log(`Created admin user: ${admin.email}`);
 
     // ========================
     // 2. ESTABLECIMIENTOS

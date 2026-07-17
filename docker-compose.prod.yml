@@ -1,0 +1,133 @@
+version: '3.8'
+
+# ══════════════════════════════════════════════════════════════════
+#  Sello Verde — docker-compose PRODUCCIÓN
+#  Uso: docker compose -f docker-compose.prod.yml up -d --build
+#
+#  Arquitectura:
+#    Host Nginx ──► 127.0.0.1:3080 (frontend Next.js)
+#                       │
+#                  sello_verde_internal (red Docker aislada)
+#                       ├── backend  :3001
+#                       └── db       :5432
+#
+#  El db y backend NUNCA exponen puertos al host.
+#  Solo el frontend escucha en loopback para que el Nginx del host
+#  pueda alcanzarlo.
+# ══════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: sello_verde_db
+    restart: always
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - sello_verde_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - sello_verde_internal
+
+  # ── Backend NestJS ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: sello_verde_backend
+    restart: always
+    expose:
+      - "3001"
+    environment:
+      NODE_ENV: production
+      # Base de datos (resuelto por DNS interno de Docker)
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DB_USER}
+      DATABASE_PASSWORD: ${DB_PASSWORD}
+      DATABASE_NAME: ${DB_NAME}
+      # Auth
+      JWT_SECRET: ${JWT_SECRET}
+      # CORS — solo el dominio público del frontend
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      # Directorio de uploads dentro del contenedor
+      UPLOADS_DIR: uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Volumen nombrado para persistir archivos subidos entre deploys
+      - sello_verde_uploads:/app/uploads
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:3001/api',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - sello_verde_internal
+
+  # ── Frontend Next.js ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # NEXT_PUBLIC_* se hornean (bake) en el bundle del cliente en tiempo de BUILD.
+        # Debe apuntar al dominio público accesible desde el navegador.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: sello_verde_frontend
+    restart: always
+    # Solo accesible desde loopback: el Nginx del host apuntará aquí
+    ports:
+      - "127.0.0.1:3080:3000"
+    environment:
+      NODE_ENV: production
+      # URL pública (también disponible en runtime para SSR)
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      # URL interna de Docker: usada SOLO por los rewrites server-side de Next.js.
+      # NO se expone al navegador.
+      NEXT_INTERNAL_API_URL: http://backend:3001
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:3000',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - sello_verde_internal
+
+# ── Volúmenes ──────────────────────────────────────────────────
+volumes:
+  sello_verde_postgres:
+    driver: local
+  sello_verde_uploads:
+    driver: local
+
+# ── Red aislada ────────────────────────────────────────────────
+# Nombre distinto a "slep_internal" para evitar cualquier colisión
+networks:
+  sello_verde_internal:
+    driver: bridge

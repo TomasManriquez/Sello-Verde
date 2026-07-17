@@ -1,0 +1,30 @@
+# ── Stage 1: Build ────────────────────────────────────────────
+FROM node:20-slim AS builder
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# ── Stage 2: Runner de producción ─────────────────────────────
+FROM node:20-slim AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copiar solo artefactos de build (sin devDependencies ni src)
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY package*.json ./
+
+# Directorio de uploads — montado como volumen Docker en producción
+RUN mkdir -p /app/uploads && chmod 755 /app/uploads
+
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=5 \
+  CMD node -e "require('http').get('http://localhost:3001/api',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+
+CMD ["node", "dist/main"]

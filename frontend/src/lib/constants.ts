@@ -77,10 +77,10 @@ export const DEFECTOS_ANEXO3 = [
   { id: 'fugas_artefactos',  label: 'Fugas de gas en artefactos' },
   { id: 'fugas_red',         label: 'Fugas de gas en la red' },
   { id: 'fugas_medidor',     label: 'Fugas de gas en el medidor' },
-  { id: 'sin_conducto',      label: 'Artefactos tipo B o C sin conducto de evacuación' },
-  { id: 'co_50ppm',          label: 'Concentración de CO ambiente superior a 50 ppm' },
-  { id: 'tipo_a_sala',       label: 'Artefacto tipo A en salas de clases y/o bibliotecas' },
-  { id: 'tiro_cero',         label: 'Lectura de tiro igual a 0 o negativo' },
+  { id: 'sin_conducto_evacuacion',      label: 'Artefactos tipo B o C sin conducto de evacuación' },
+  { id: 'co_superior_50ppm',          label: 'Concentración de CO ambiente superior a 50 ppm' },
+  { id: 'artefacto_a_en_aulas',       label: 'Artefacto tipo A en salas de clases y/o bibliotecas' },
+  { id: 'lectura_tiro_igual',         label: 'Lectura de tiro igual a 0 o negativo' },
 ] as const;
 
 export type DefectoId = typeof DEFECTOS_ANEXO3[number]['id'];

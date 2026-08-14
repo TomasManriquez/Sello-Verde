@@ -533,7 +533,7 @@ export default function ExpedienteDetailPage() {
                       }}
                     >
                       <div>
-                        <strong>{alerta.tipo_alerta === 'vencimiento_sello_verde' ? 'Sello Verde (2 años)' : 'Plazo Regularización (90 días)'}</strong>
+                        <strong>{(alerta.tipo || alerta.tipo_alerta) === 'vencimiento_sello_verde' ? 'Sello Verde (2 años)' : 'Plazo Regularización (90 días)'}</strong>
                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                           Vence: {formatDate(alerta.fecha_vencimiento)}
                           <span style={{ marginLeft: 'var(--space-2)', color: alerta.dias_restantes < 30 ? 'var(--color-rojo)' : 'inherit' }}>

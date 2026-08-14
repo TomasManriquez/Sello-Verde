@@ -4,13 +4,13 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Expediente } from './entities/expediente.entity';
 import { HitoTC6 } from './entities/hito-tc6.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Alerta } from '../alertas/entities/alerta.entity';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
-import { EstadoTC6, EstadoGeneral } from '../common/enums';
+import { EstadoTC6, EstadoGeneral, EstadoAlerta } from '../common/enums';
 
 // TC6 forward transition rules
 const TC6_TRANSITIONS: Record<EstadoTC6, EstadoTC6[]> = {
@@ -89,6 +89,15 @@ export class ExpedientesService {
       order: { fecha_vencimiento: 'ASC' },
     });
 
+    // Calcular días restantes para cada alerta
+    const enrichedAlertas = alertas.map((alerta) => {
+      const today = new Date();
+      const expiry = new Date(alerta.fecha_vencimiento);
+      const diffTime = expiry.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return { ...alerta, dias_restantes: diffDays };
+    });
+
     // Normalise nested documents: add the relative URL so the frontend
     // can build the full absolute URL via API_HOST + doc.url
     const documentos = (item.documentos ?? []).map((doc) => {
@@ -97,7 +106,7 @@ export class ExpedientesService {
       return { ...doc, url };
     });
 
-    return { data: { ...item, documentos, alertas }, message: 'OK' };
+    return { data: { ...item, documentos, alertas: enrichedAlertas }, message: 'OK' };
   }
 
   async create(dto: CreateExpedienteDto) {
@@ -260,5 +269,50 @@ export class ExpedientesService {
       data: saved,
       message: `Estado TC6 revertido a ${estadoAnterior}`,
     };
+  }
+
+  async remove(id: number) {
+    const item = await this.expedienteRepository.findOne({ where: { id } });
+    if (!item) {
+      throw new NotFoundException(`Expediente #${id} no encontrado`);
+    }
+    // Desactivar alertas asociadas
+    const alertas = await this.alertaRepository.find({
+      where: [
+        { expediente_id: id, estado: EstadoAlerta.ACTIVA },
+        { expediente_id: id, estado: EstadoAlerta.NOTIFICADA },
+      ],
+    });
+    if (alertas.length > 0) {
+      await this.alertaRepository.update(
+        alertas.map((a) => a.id),
+        { estado: EstadoAlerta.RESUELTA },
+      );
+    }
+    await this.expedienteRepository.softDelete(id);
+    return { message: 'Expediente eliminado exitosamente' };
+  }
+
+  async removeByEstablecimiento(establecimientoId: number) {
+    const items = await this.expedienteRepository.find({
+      where: { establecimiento_id: establecimientoId },
+    });
+    if (!items || items.length === 0) return;
+    const ids = items.map((i) => i.id);
+
+    // Desactivar alertas asociadas
+    const alertas = await this.alertaRepository.find({
+      where: [
+        { expediente_id: In(ids), estado: EstadoAlerta.ACTIVA },
+        { expediente_id: In(ids), estado: EstadoAlerta.NOTIFICADA },
+      ],
+    });
+    if (alertas.length > 0) {
+      await this.alertaRepository.update(
+        alertas.map((a) => a.id),
+        { estado: EstadoAlerta.RESUELTA },
+      );
+    }
+    await this.expedienteRepository.softDelete(ids);
   }
 }

@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Body,
   Param,
   ParseIntPipe,
@@ -55,5 +56,10 @@ export class ExpedientesController {
     @Body('observaciones') observaciones?: string,
   ) {
     return this.service.revertEstadoTC6(id, observaciones);
+  }
+
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
   }
 }

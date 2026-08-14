@@ -6,6 +6,7 @@ import { Local } from './entities/local.entity';
 import { CreateEstablecimientoDto } from './dto/create-establecimiento.dto';
 import { CreateLocalDto } from './dto/create-local.dto';
 import { EstadoGeneral } from '../common/enums';
+import { ExpedientesService } from '../expedientes/expedientes.service';
 
 @Injectable()
 export class EstablecimientosService {
@@ -14,6 +15,7 @@ export class EstablecimientosService {
     private establecimientoRepository: Repository<Establecimiento>,
     @InjectRepository(Local)
     private localRepository: Repository<Local>,
+    private expedientesService: ExpedientesService,
   ) {}
 
   async findAll(filters?: { rbd?: string; search?: string; estado_general?: EstadoGeneral }) {
@@ -156,5 +158,26 @@ export class EstablecimientosService {
     Object.assign(local, dto);
     const saved = await this.localRepository.save(local);
     return { data: saved, message: 'Local actualizado exitosamente' };
+  }
+
+  /**
+   * Soft-delete de establecimiento con delegación de responsabilidades:
+   * 1. Delega a ExpedientesService la eliminación de los expedientes asociados y sus alertas
+   * 2. Soft-delete del propio establecimiento
+   */
+  async remove(id: number) {
+    const item = await this.establecimientoRepository.findOne({
+      where: { id },
+    });
+    if (!item) {
+      throw new NotFoundException(`Establecimiento #${id} no encontrado`);
+    }
+
+    // 1. Delegar a ExpedientesService (él conoce sus reglas de negocio y alertas)
+    await this.expedientesService.removeByEstablecimiento(id);
+
+    // 2. Soft-delete del establecimiento
+    await this.establecimientoRepository.softDelete(id);
+    return { message: 'Establecimiento y recursos asociados eliminados exitosamente' };
   }
 }

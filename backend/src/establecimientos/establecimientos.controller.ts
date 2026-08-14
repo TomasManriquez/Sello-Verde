@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -45,6 +46,11 @@ export class EstablecimientosController {
     @Body() dto: Partial<CreateEstablecimientoDto>,
   ) {
     return this.service.update(id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
   }
 
   // Locales endpoints

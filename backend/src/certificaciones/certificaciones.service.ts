@@ -10,6 +10,7 @@ import {
   CreateCertificacionDto,
   BulkCreateDefectosDto,
 } from './dto/create-certificacion.dto';
+import { UpdateCertificacionDto } from './dto/update-certificacion.dto';
 import { TipoSello, TipoAlerta, EstadoGeneral, EstadoAlerta } from '../common/enums';
 
 @Injectable()
@@ -159,6 +160,102 @@ export class CertificacionesService {
     return {
       data: result,
       message: 'Certificación creada exitosamente',
+    };
+  }
+
+  async update(id: number, dto: UpdateCertificacionDto) {
+    const cert = await this.certRepository.findOne({
+      where: { id },
+      relations: ['defectos', 'expediente', 'expediente.establecimiento'],
+    });
+    if (!cert) {
+      throw new NotFoundException(`Certificación #${id} no encontrada`);
+    }
+
+    const { defectos: defectosDto, ...certData } = dto;
+
+    // Actualizar campos principales
+    Object.assign(cert, certData);
+    const saved = await this.certRepository.save(cert);
+
+    // Reemplazar defectos si se envió el array
+    if (defectosDto !== undefined) {
+      await this.defectoRepository.delete({ certificacion_id: id });
+      if (defectosDto.length > 0) {
+        const defectos = defectosDto.map((d) =>
+          this.defectoRepository.create({ ...d, certificacion_id: id }),
+        );
+        await this.defectoRepository.save(defectos);
+      }
+    }
+
+    // Sincronizar alerta si se modificó sello o fecha
+    if (dto.tipo_sello || dto.fecha_inspeccion) {
+      const expediente = cert.expediente;
+      const nombreEE = expediente?.establecimiento?.nombre ?? `Expediente #${cert.expediente_id}`;
+      const localInfo = saved.local_id ? ` — Local #${saved.local_id}` : '';
+      const fechaInspeccion = new Date(saved.fecha_inspeccion);
+
+      let alerta = await this.alertaRepository.findOne({
+        where: { certificacion_id: id },
+      });
+
+      let alertaData: Partial<Alerta> = {};
+
+      if (saved.tipo_sello === TipoSello.VERDE) {
+        const fechaVencimiento = new Date(fechaInspeccion);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + 730);
+        alertaData = {
+          tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
+          fecha_vencimiento: fechaVencimiento,
+          mensaje: `${nombreEE}${localInfo} — Sello Verde vence el ${fechaVencimiento.toLocaleDateString('es-CL')}`,
+        };
+        if (expediente) expediente.estado_general = EstadoGeneral.SELLO_VERDE;
+      } else if (saved.tipo_sello === TipoSello.ROJO || saved.tipo_sello === TipoSello.AMARILLO) {
+        const fechaVencimiento = new Date(fechaInspeccion);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + 90);
+        const tipoLabel = saved.tipo_sello === TipoSello.ROJO ? '🔴 Rojo' : '🟡 Amarillo';
+        alertaData = {
+          tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
+          fecha_vencimiento: fechaVencimiento,
+          mensaje: `${nombreEE}${localInfo} — Sello ${tipoLabel}: plazo regularización vence el ${fechaVencimiento.toLocaleDateString('es-CL')}`,
+        };
+        if (expediente) {
+          expediente.estado_general =
+            saved.tipo_sello === TipoSello.ROJO ? EstadoGeneral.SELLO_ROJO : EstadoGeneral.SELLO_AMARILLO;
+        }
+      }
+
+      if (alerta) {
+        Object.assign(alerta, alertaData);
+        await this.alertaRepository.save(alerta);
+      } else {
+        alerta = this.alertaRepository.create({
+          ...alertaData,
+          expediente_id: cert.expediente_id,
+          certificacion_id: saved.id,
+          instalacion_id: saved.instalacion_id ?? null,
+        });
+        await this.alertaRepository.save(alerta);
+      }
+
+      if (expediente) {
+        await this.expedienteRepository.save(expediente);
+        if (expediente.establecimiento) {
+          expediente.establecimiento.estado_general = expediente.estado_general;
+          await this.establecimientoRepository.save(expediente.establecimiento);
+        }
+      }
+    }
+
+    const result = await this.certRepository.findOne({
+      where: { id },
+      relations: ['defectos', 'local', 'instalacion', 'alertas'],
+    });
+
+    return {
+      data: result,
+      message: 'Certificación actualizada exitosamente',
     };
   }
 

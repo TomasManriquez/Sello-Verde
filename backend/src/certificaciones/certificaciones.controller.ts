@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   ParseIntPipe,
@@ -12,6 +13,7 @@ import {
   CreateCertificacionDto,
   BulkCreateDefectosDto,
 } from './dto/create-certificacion.dto';
+import { UpdateCertificacionDto } from './dto/update-certificacion.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -30,6 +32,14 @@ export class CertificacionesController {
     @Body() dto: CreateCertificacionDto,
   ) {
     return this.service.create(expedienteId, dto);
+  }
+
+  @Patch('certificaciones/:id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCertificacionDto,
+  ) {
+    return this.service.update(id, dto);
   }
 
   @Get('certificaciones/:id/defectos')

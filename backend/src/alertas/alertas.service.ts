@@ -180,4 +180,18 @@ export class AlertasService {
       console.log(`[CRON] Marked ${expiredAlerts.length} alert(s) as vencida`);
     }
   }
+
+  async remove(id: number) {
+    const alerta = await this.alertaRepository.findOne({ where: { id } });
+    if (!alerta) {
+      throw new NotFoundException(`Alerta #${id} no encontrada`);
+    }
+    if (alerta.estado !== EstadoAlerta.RESUELTA) {
+      throw new BadRequestException(
+        'Solo se pueden eliminar alertas en estado \'resuelta\'. Resuelve la alerta primero.',
+      );
+    }
+    await this.alertaRepository.softDelete(id);
+    return { message: 'Alerta eliminada exitosamente' };
+  }
 }

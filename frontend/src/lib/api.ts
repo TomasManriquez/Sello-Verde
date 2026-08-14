@@ -171,6 +171,9 @@ export const establecimientosApi = {
   update(id: number | string, data: Partial<Establecimiento>) {
     return api.put<Establecimiento>(`/establecimientos/${id}`, data);
   },
+  remove(id: number | string) {
+    return api.delete(`/establecimientos/${id}`);
+  },
 };
 
 // ── Locales ──────────────────────────────────────────────────
@@ -215,12 +218,28 @@ export const expedientesApi = {
 };
 
 // ── Certificaciones ──────────────────────────────────────────
+export interface UpdateCertificacionPayload {
+  tipo_sello?: string;
+  nombre_inspector?: string;
+  entidad_certificadora?: string;
+  rut_inspector?: string;
+  fecha_inspeccion?: string;
+  numero_certificado?: string;
+  observaciones?: string;
+  local_id?: number;
+  instalacion_id?: number;
+  defectos?: { tipo_defecto: string; instalacion_afectada?: string }[];
+}
+
 export const certificacionesApi = {
   list(expedienteId: number | string) {
     return api.get<Certificacion[]>(`/expedientes/${expedienteId}/certificaciones`);
   },
   create(expedienteId: number | string, data: Partial<Certificacion>) {
     return api.post<Certificacion>(`/expedientes/${expedienteId}/certificaciones`, data);
+  },
+  update(id: number | string, data: UpdateCertificacionPayload) {
+    return api.patch<Certificacion>(`/certificaciones/${id}`, data);
   },
 };
 
@@ -259,6 +278,9 @@ export const alertasApi = {
   },
   marcarResuelta(id: number | string) {
     return api.patch<Alerta>(`/alertas/${id}`, { estado: 'resuelta' });
+  },
+  remove(id: number | string) {
+    return api.delete(`/alertas/${id}`);
   },
 };
 

@@ -2,10 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { expedientesApi, documentosApi, certificacionesApi, alertasApi, Expediente, Documento, Certificacion, Alerta, ApiError, getToken } from '@/lib/api';
+import { expedientesApi, documentosApi, certificacionesApi, alertasApi, Expediente, Documento, Certificacion, Alerta, ApiError, getToken, UpdateCertificacionPayload } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 import { Stepper } from '@/components/ui/Stepper';
+import { Input } from '@/components/ui/Input';
 import { TC6_ESTADOS, Tc6Estado, formatDate, formatBytes } from '@/lib/constants';
 
 export default function ExpedienteDetailPage() {
@@ -37,6 +39,18 @@ export default function ExpedienteDetailPage() {
 
   // TC6 State change loading
   const [advancingTc6, setAdvancingTc6] = useState(false);
+
+  // Edit Certificacion state
+  const [editCert, setEditCert] = useState<Certificacion | null>(null);
+  const [editCertForm, setEditCertForm] = useState<UpdateCertificacionPayload>({});
+  const [savingCert, setSavingCert] = useState(false);
+  const [editCertError, setEditCertError] = useState<string | null>(null);
+
+  // Alerta actions state
+  const [resolviendoAlertaId, setResolviendoAlertaId] = useState<number | null>(null);
+  const [eliminandoAlertaId, setEliminandoAlertaId] = useState<number | null>(null);
+  const [alertaActionError, setAlertaActionError] = useState<string | null>(null);
+  const [deleteAlertTarget, setDeleteAlertTarget] = useState<Alerta | null>(null);
 
   const loadData = () => {
     setLoading(true);
@@ -154,6 +168,64 @@ export default function ExpedienteDetailPage() {
     }
   };
 
+  // ── Editar Certificación ─────────────────────────────────────
+  const openEditCert = (cert: Certificacion) => {
+    setEditCert(cert);
+    setEditCertError(null);
+    setEditCertForm({
+      nombre_inspector: cert.nombre_inspector ?? '',
+      entidad_certificadora: cert.entidad_certificadora ?? '',
+      rut_inspector: cert.rut_inspector ?? '',
+      fecha_inspeccion: cert.fecha_inspeccion?.slice(0, 10) ?? '',
+      numero_certificado: cert.numero_certificado ?? '',
+      observaciones: cert.observaciones ?? '',
+    });
+  };
+
+  const handleSaveCert = async () => {
+    if (!editCert) return;
+    setSavingCert(true);
+    setEditCertError(null);
+    try {
+      const updated = await certificacionesApi.update(editCert.id, editCertForm);
+      setCerts(prev => prev.map(c => c.id === editCert.id ? { ...c, ...updated } : c));
+      setEditCert(null);
+    } catch (err: any) {
+      setEditCertError(err.message || 'Error al guardar');
+    } finally {
+      setSavingCert(false);
+    }
+  };
+
+  // ── Acciones sobre Alertas ────────────────────────────────────
+  const handleResolverAlerta = async (alertaId: number) => {
+    setResolviendoAlertaId(alertaId);
+    setAlertaActionError(null);
+    try {
+      await alertasApi.marcarResuelta(alertaId);
+      setAlertas(prev => prev.map(a => a.id === alertaId ? { ...a, estado: 'resuelta' } : a));
+    } catch (err: any) {
+      setAlertaActionError(err.message || 'Error al resolver alerta');
+    } finally {
+      setResolviendoAlertaId(null);
+    }
+  };
+
+  const handleEliminarAlerta = async () => {
+    if (!deleteAlertTarget) return;
+    setEliminandoAlertaId(deleteAlertTarget.id);
+    setAlertaActionError(null);
+    try {
+      await alertasApi.remove(deleteAlertTarget.id);
+      setAlertas(prev => prev.filter(a => a.id !== deleteAlertTarget.id));
+      setDeleteAlertTarget(null);
+    } catch (err: any) {
+      setAlertaActionError(err.message || 'Error al eliminar alerta');
+    } finally {
+      setEliminandoAlertaId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -192,6 +264,7 @@ export default function ExpedienteDetailPage() {
   }
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       {/* Page Header */}
       <div>
@@ -479,30 +552,47 @@ export default function ExpedienteDetailPage() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                  {certs.map((cert, idx) => (
+                  {certs.map((cert) => (
                     <div
                       key={cert.id}
                       style={{
                         padding: 'var(--space-3) var(--space-4)',
                         border: '1px solid var(--color-border)',
                         borderRadius: 'var(--radius-md)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
                       }}
                     >
-                      <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <strong>Inspector: {cert.nombre_inspector}</strong> 
-                          <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
-                            ({cert.entidad_certificadora})
-                          </span>
+                          <strong>Inspector: {cert.nombre_inspector}</strong>
+                          <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>({cert.entidad_certificadora})</span>
                         </div>
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                          Fecha Inspección: {formatDate(cert.fecha_inspeccion)}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <Badge estado={cert.tipo_sello} />
+                          <button
+                            id={`edit-cert-${cert.id}`}
+                            onClick={() => openEditCert(cert)}
+                            title="Editar certificación"
+                            style={{
+                              background: 'none', border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-sm)', padding: '4px 10px',
+                              cursor: 'pointer', fontSize: 'var(--text-xs)',
+                              color: 'var(--color-text-muted)', fontFamily: 'Satoshi, sans-serif',
+                              transition: 'all var(--transition-interactive)',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-primary)'; e.currentTarget.style.color = 'var(--color-primary)'; }}
+                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                          >
+                            ✏️ Editar
+                          </button>
+                        </div>
                       </div>
-                      <Badge estado={cert.tipo_sello} />
+                      <div style={{ display: 'flex', gap: 'var(--space-6)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                        <span>📅 {formatDate(cert.fecha_inspeccion)}</span>
+                        {cert.numero_certificado && <span>📄 {cert.numero_certificado}</span>}
+                        {cert.defectos && cert.defectos.length > 0 && (
+                          <span style={{ color: 'var(--color-rojo)' }}>⚠️ {cert.defectos.length} defecto(s)</span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -513,6 +603,11 @@ export default function ExpedienteDetailPage() {
           {/* Alertas Tab */}
           {activeTab === 'alertas' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              {alertaActionError && (
+                <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)', background: 'oklch(75% 0.1 20 / 0.08)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)' }}>
+                  ⚠️ {alertaActionError}
+                </div>
+              )}
               {alertas.length === 0 ? (
                 <div className="empty-state" style={{ padding: 'var(--space-8) 0' }}>
                   <span className="empty-state-icon">🔔</span>
@@ -525,11 +620,13 @@ export default function ExpedienteDetailPage() {
                       key={alerta.id}
                       style={{
                         padding: 'var(--space-3) var(--space-4)',
-                        border: '1px solid var(--color-border)',
+                        border: `1px solid ${alerta.estado === 'resuelta' ? 'var(--color-border)' : alerta.dias_restantes < 30 ? 'oklch(60% 0.18 15 / 0.4)' : 'var(--color-border)'}`,
                         borderRadius: 'var(--radius-md)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        opacity: alerta.estado === 'resuelta' ? 0.65 : 1,
+                        transition: 'opacity var(--transition-interactive)',
                       }}
                     >
                       <div>
@@ -541,7 +638,43 @@ export default function ExpedienteDetailPage() {
                           </span>
                         </div>
                       </div>
-                      <Badge estado={alerta.estado} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <Badge estado={alerta.estado} />
+                        {/* Resolver — disponible si está activa o notificada */}
+                        {(alerta.estado === 'activa' || alerta.estado === 'notificada') && (
+                          <button
+                            id={`resolver-alerta-${alerta.id}`}
+                            onClick={() => handleResolverAlerta(alerta.id)}
+                            disabled={resolviendoAlertaId === alerta.id}
+                            title="Marcar como resuelta"
+                            style={{
+                              background: 'none', border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-sm)', padding: '4px 10px',
+                              cursor: 'pointer', fontSize: 'var(--text-xs)',
+                              color: 'var(--color-primary)', fontFamily: 'Satoshi, sans-serif',
+                              opacity: resolviendoAlertaId === alerta.id ? 0.5 : 1,
+                            }}
+                          >
+                            {resolviendoAlertaId === alerta.id ? '...' : '✓ Resolver'}
+                          </button>
+                        )}
+                        {/* Eliminar — solo disponible si está resuelta */}
+                        {alerta.estado === 'resuelta' && (
+                          <button
+                            id={`eliminar-alerta-${alerta.id}`}
+                            onClick={() => { setDeleteAlertTarget(alerta); setAlertaActionError(null); }}
+                            title="Eliminar alerta resuelta"
+                            style={{
+                              background: 'none', border: '1px solid oklch(60% 0.18 15 / 0.35)',
+                              borderRadius: 'var(--radius-sm)', padding: '4px 10px',
+                              cursor: 'pointer', fontSize: 'var(--text-xs)',
+                              color: 'var(--color-rojo)', fontFamily: 'Satoshi, sans-serif',
+                            }}
+                          >
+                            🗑
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -551,5 +684,93 @@ export default function ExpedienteDetailPage() {
         </div>
       </div>
     </div>
+
+      {/* ── Modal: Editar Certificación ─────────────────────── */}
+      <Modal
+        open={!!editCert}
+        onClose={() => { setEditCert(null); setEditCertError(null); }}
+        title="Editar Certificación"
+        maxWidth="520px"
+      >
+        {editCert && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+              <Input
+                label="Nombre Inspector"
+                value={editCertForm.nombre_inspector ?? ''}
+                onChange={e => setEditCertForm(p => ({ ...p, nombre_inspector: e.target.value }))}
+              />
+              <Input
+                label="Entidad Certificadora"
+                value={editCertForm.entidad_certificadora ?? ''}
+                onChange={e => setEditCertForm(p => ({ ...p, entidad_certificadora: e.target.value }))}
+              />
+              <Input
+                label="RUT Inspector"
+                value={editCertForm.rut_inspector ?? ''}
+                onChange={e => setEditCertForm(p => ({ ...p, rut_inspector: e.target.value }))}
+              />
+              <Input
+                label="Fecha Inspección"
+                type="date"
+                value={editCertForm.fecha_inspeccion ?? ''}
+                onChange={e => setEditCertForm(p => ({ ...p, fecha_inspeccion: e.target.value }))}
+              />
+              <Input
+                label="N° Certificado"
+                value={editCertForm.numero_certificado ?? ''}
+                onChange={e => setEditCertForm(p => ({ ...p, numero_certificado: e.target.value }))}
+              />
+            </div>
+            <Input
+              label="Observaciones"
+              value={editCertForm.observaciones ?? ''}
+              onChange={e => setEditCertForm(p => ({ ...p, observaciones: e.target.value }))}
+            />
+            {editCertError && (
+              <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>⚠️ {editCertError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => { setEditCert(null); setEditCertError(null); }} disabled={savingCert}>
+                Cancelar
+              </Button>
+              <Button id="save-edit-cert" onClick={handleSaveCert} loading={savingCert}>
+                Guardar cambios
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal: Confirmar Eliminar Alerta ─────────────────── */}
+      <Modal
+        open={!!deleteAlertTarget}
+        onClose={() => { setDeleteAlertTarget(null); setAlertaActionError(null); }}
+        title="Eliminar Alerta"
+        maxWidth="420px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            ¿Confirmas eliminar esta alerta resuelta? El registro se conserva en la base de datos (soft delete).
+          </p>
+          {alertaActionError && (
+            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>⚠️ {alertaActionError}</div>
+          )}
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={() => { setDeleteAlertTarget(null); setAlertaActionError(null); }} disabled={!!eliminandoAlertaId}>
+              Cancelar
+            </Button>
+            <Button
+              id="confirm-delete-alerta"
+              onClick={handleEliminarAlerta}
+              loading={!!eliminandoAlertaId}
+              style={{ background: 'var(--color-rojo)', borderColor: 'var(--color-rojo)' }}
+            >
+              Eliminar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

@@ -30,6 +30,11 @@ export default function EstablecimientosPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Delete state
+  const [deleteTarget, setDeleteTarget] = useState<Establecimiento | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const loadData = () => {
     setLoading(true);
     establecimientosApi.list({
@@ -74,6 +79,21 @@ export default function EstablecimientosPage() {
       setCreateError(err.message || 'Error al crear establecimiento');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await establecimientosApi.remove(deleteTarget.id);
+      setEstablecimientos(prev => prev.filter(e => e.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      setDeleteError(err.message || 'Error al eliminar establecimiento');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -175,37 +195,62 @@ export default function EstablecimientosPage() {
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: 'var(--space-2)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
-                  <Button
-                    as="a"
-                    href={`/establecimientos/${ee.id}`}
-                    variant="ghost"
-                    size="sm"
-                    style={{ flex: 1, textAlign: 'center' }}
-                  >
-                    Ver Ficha
-                  </Button>
-                  {ee.expediente_activo ? (
-                    <Button
-                      as="a"
-                      href={`/expedientes/${ee.expediente_activo.id}`}
-                      variant="secondary"
-                      size="sm"
-                      style={{ flex: 1, textAlign: 'center' }}
-                    >
-                      Expediente
-                    </Button>
-                  ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                     <Button
                       as="a"
                       href={`/establecimientos/${ee.id}`}
-                      variant="primary"
+                      variant="ghost"
                       size="sm"
                       style={{ flex: 1, textAlign: 'center' }}
                     >
-                      Iniciar Gestión
+                      Ver Ficha
                     </Button>
-                  )}
+                    {ee.expediente_activo ? (
+                      <Button
+                        as="a"
+                        href={`/expedientes/${ee.expediente_activo.id}`}
+                        variant="secondary"
+                        size="sm"
+                        style={{ flex: 1, textAlign: 'center' }}
+                      >
+                        Expediente
+                      </Button>
+                    ) : (
+                      <Button
+                        as="a"
+                        href={`/establecimientos/${ee.id}`}
+                        variant="primary"
+                        size="sm"
+                        style={{ flex: 1, textAlign: 'center' }}
+                      >
+                        Iniciar Gestión
+                      </Button>
+                    )}
+                  </div>
+                  {/* Botón eliminar — acción destructiva separada */}
+                  <button
+                    id={`delete-ee-${ee.id}`}
+                    onClick={() => { setDeleteTarget(ee); setDeleteError(null); }}
+                    style={{
+                      background: 'none',
+                      border: '1px solid oklch(60% 0.18 15 / 0.35)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--color-rojo)',
+                      fontSize: 'var(--text-xs)',
+                      padding: '6px 0',
+                      cursor: 'pointer',
+                      width: '100%',
+                      fontFamily: 'Satoshi, sans-serif',
+                      letterSpacing: '0.02em',
+                      transition: 'background var(--transition-interactive)',
+                    }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'oklch(75% 0.1 20 / 0.08)')}
+                    onMouseOut={e => (e.currentTarget.style.background = 'none')}
+                    aria-label={`Eliminar ${ee.nombre}`}
+                  >
+                    🗑 Eliminar establecimiento
+                  </button>
                 </div>
               </div>
             ))}
@@ -263,6 +308,62 @@ export default function EstablecimientosPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(null); }}
+        title="Eliminar Establecimiento"
+        maxWidth="480px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
+          <div style={{
+            background: 'oklch(75% 0.1 20 / 0.1)',
+            border: '1px solid oklch(60% 0.18 15 / 0.3)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-4)',
+          }}>
+            <p style={{ margin: '0 0 var(--space-2) 0', fontWeight: 700, color: 'var(--color-rojo)', fontFamily: 'Satoshi, sans-serif' }}>
+              ⚠️ Acción en cadena — sin posibilidad de recuperar
+            </p>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+              Eliminar <strong style={{ color: 'var(--color-text)' }}>{deleteTarget?.nombre}</strong> realizará las siguientes acciones:
+            </p>
+            <ul style={{ margin: 'var(--space-2) 0 0 var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.8 }}>
+              <li>Marcar todas las <strong>alertas activas</strong> de sus expedientes como resueltas</li>
+              <li>Archivar todos sus <strong>expedientes</strong> asociados</li>
+              <li>Eliminar el establecimiento del listado activo</li>
+            </ul>
+            <p style={{ margin: 'var(--space-3) 0 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Los registros históricos (certificaciones, documentos) se conservan en la base de datos.
+            </p>
+          </div>
+
+          {deleteError && (
+            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)', background: 'oklch(75% 0.1 20 / 0.08)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)' }}>
+              ⚠️ {deleteError}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button
+              variant="secondary"
+              onClick={() => { setDeleteTarget(null); setDeleteError(null); }}
+              disabled={deleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              id="confirm-delete-establecimiento"
+              onClick={handleDeleteConfirm}
+              loading={deleting}
+              style={{ background: 'var(--color-rojo)', borderColor: 'var(--color-rojo)' }}
+            >
+              Sí, eliminar
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

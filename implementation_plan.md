@@ -2,7 +2,7 @@
 
 ## Contexto
 
-El SLEP (Servicio Local de Educación Pública) necesita un sistema para gestionar el ciclo de vida completo de las certificaciones de gas (Sello Verde) en Establecimientos Educacionales (EE). El usuario principal es el **encargado de infraestructura del SLEP**, quien actúa como digitador y controlador del proceso. El MVP piloto cubre **20 establecimientos**.
+El SLEP (Servicio Local de Educación Pública) necesita un sistema para gestionar el ciclo de vida completo de las certificaciones de gas (Sello Verde) en Establecimientos Educacionales (EE). El usuario principal es el **encargado de infraestructura del SLEP**, quien actúa como digitador y controlador del proceso. El MVP piloto cubre **24 establecimientos** y **25 instalaciones de gas**.
 
 ---
 

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
+import { Repository, LessThanOrEqual, In } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { Alerta } from './entities/alerta.entity';
 import { Certificacion } from '../certificaciones/entities/certificacion.entity';
@@ -178,6 +178,22 @@ export class AlertasService {
     if (expiredAlerts.length > 0) {
       await this.alertaRepository.save(expiredAlerts);
       console.log(`[CRON] Marked ${expiredAlerts.length} alert(s) as vencida`);
+    }
+  }
+
+  async resolverPorExpedientes(expedienteIds: number[]) {
+    if (!expedienteIds || expedienteIds.length === 0) return;
+    const alertasActivas = await this.alertaRepository.find({
+      where: [
+        { expediente_id: In(expedienteIds), estado: EstadoAlerta.ACTIVA },
+        { expediente_id: In(expedienteIds), estado: EstadoAlerta.NOTIFICADA },
+      ],
+    });
+    if (alertasActivas.length > 0) {
+      await this.alertaRepository.update(
+        alertasActivas.map((a) => a.id),
+        { estado: EstadoAlerta.RESUELTA },
+      );
     }
   }
 

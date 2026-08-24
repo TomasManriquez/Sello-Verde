@@ -271,48 +271,33 @@ export class ExpedientesService {
     };
   }
 
-  async remove(id: number) {
-    const item = await this.expedienteRepository.findOne({ where: { id } });
-    if (!item) {
-      throw new NotFoundException(`Expediente #${id} no encontrado`);
-    }
-    // Desactivar alertas asociadas
-    const alertas = await this.alertaRepository.find({
-      where: [
-        { expediente_id: id, estado: EstadoAlerta.ACTIVA },
-        { expediente_id: id, estado: EstadoAlerta.NOTIFICADA },
-      ],
-    });
-    if (alertas.length > 0) {
-      await this.alertaRepository.update(
-        alertas.map((a) => a.id),
-        { estado: EstadoAlerta.RESUELTA },
-      );
-    }
-    await this.expedienteRepository.softDelete(id);
-    return { message: 'Expediente eliminado exitosamente' };
-  }
+    /**
+   * Eliminación lógica en cascada al eliminar un establecimiento:
+   * 1. Soft-delete de todas las alertas pertenecientes a sus expedientes.
+   * 2. Soft-delete de todos los expedientes del establecimiento.
+   */
 
   async removeByEstablecimiento(establecimientoId: number) {
-    const items = await this.expedienteRepository.find({
+    const expedientes = await this.expedienteRepository.find({
       where: { establecimiento_id: establecimientoId },
     });
-    if (!items || items.length === 0) return;
-    const ids = items.map((i) => i.id);
+    if (!expedientes || expedientes.length === 0) return;
 
-    // Desactivar alertas asociadas
-    const alertas = await this.alertaRepository.find({
-      where: [
-        { expediente_id: In(ids), estado: EstadoAlerta.ACTIVA },
-        { expediente_id: In(ids), estado: EstadoAlerta.NOTIFICADA },
-      ],
-    });
-    if (alertas.length > 0) {
-      await this.alertaRepository.update(
-        alertas.map((a) => a.id),
-        { estado: EstadoAlerta.RESUELTA },
-      );
-    }
+    const ids = expedientes.map((e) => e.id);
+//1. softdelete de todas las alertas del establecimiento
+
+    await this.alertaRepository.softDelete ({ expediente_id: In(ids)},);
     await this.expedienteRepository.softDelete(ids);
+  }
+
+  async remove(id: number) {
+    const item = await this.expedienteRepository.findOne({ where: { id } });
+    if (!item)  {
+      throw new NotFoundException(`Expediente #${id} no encontrado`);
+    }
+
+    await this.alertaRepository.softDelete({ expediente_id: id});
+
+    return { message: 'Expediente eliminado exitosamente' };
   }
 }

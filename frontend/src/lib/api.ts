@@ -67,16 +67,24 @@ async function request<T>(
     headers,
   });
 
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    try {
-      const body = await res.json();
-      message = body?.message ?? body?.error ?? message;
-    } catch {
-      // ignore JSON parse errors
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        message = body?.message ?? body?.error ?? message;
+      } catch {
+        // ignore JSON parse errors
+      }
+
+      if (res.status === 401) {
+        clearToken();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+      }
+
+      throw new ApiError(res.status, message);
     }
-    throw new ApiError(res.status, message);
-  }
 
   if (res.status === 204) return undefined as T;
 

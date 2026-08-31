@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { establecimientosApi, Establecimiento } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -35,6 +35,29 @@ export default function EstablecimientosPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Contextual menu — tracks which card's menu is open
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close contextual menu when clicking outside or pressing Escape
+  useEffect(() => {
+    if (openMenuId === null) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenMenuId(null);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [openMenuId]);
+
   const loadData = () => {
     setLoading(true);
     establecimientosApi.list({
@@ -57,7 +80,6 @@ export default function EstablecimientosPage() {
     const delayDebounceFn = setTimeout(() => {
       loadData();
     }, 300);
-
     return () => clearTimeout(delayDebounceFn);
   }, [search, estadoFilter]);
 
@@ -67,7 +89,6 @@ export default function EstablecimientosPage() {
       setCreateError('RBD, Nombre y Dirección son obligatorios');
       return;
     }
-
     setCreating(true);
     setCreateError(null);
     try {
@@ -104,12 +125,12 @@ export default function EstablecimientosPage() {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 'var(--space-6)', alignItems: 'start' }}>
+
       {/* Filters Sidebar */}
       <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', position: 'sticky', top: 'var(--space-4)' }}>
         <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', marginBottom: 'var(--space-4)' }}>
           Filtros de Búsqueda
         </h2>
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <Input
             label="Buscar por Nombre / RBD"
@@ -117,14 +138,12 @@ export default function EstablecimientosPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-
           <Select
             label="Estado del Establecimiento"
             value={estadoFilter}
             onChange={e => setEstadoFilter(e.target.value)}
             options={[{ value: '', label: 'Todos los estados' }, ...estadoOptions]}
           />
-
           <Button variant="secondary" onClick={() => { setSearch(''); setEstadoFilter(''); }} style={{ marginTop: 'var(--space-2)' }}>
             Limpiar Filtros
           </Button>
@@ -156,7 +175,7 @@ export default function EstablecimientosPage() {
         {loading ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--space-4)' }}>
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: '140px', borderRadius: 'var(--radius-lg)' }} />
+              <div key={i} className="skeleton" style={{ height: '160px', borderRadius: 'var(--radius-lg)' }} />
             ))}
           </div>
         ) : establecimientos.length === 0 ? (
@@ -178,15 +197,142 @@ export default function EstablecimientosPage() {
                   justifyContent: 'space-between',
                   gap: 'var(--space-4)',
                   animationDelay: `${i * 50}ms`,
+                  position: 'relative',
                 }}
               >
+                {/* ── Card header ─────────────────────────────── */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'Satoshi, sans-serif', fontWeight: 700 }}>
                       RBD {ee.rbd}
                     </span>
-                    <Badge estado={ee.estado_general} />
+
+                    {/* Badge + ··· menu trigger agrupados */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <Badge estado={ee.estado_general} />
+
+                      {/* ─── Contextual menu ─── */}
+                      <div
+                        ref={openMenuId === ee.id ? menuRef : null}
+                        style={{ position: 'relative' }}
+                      >
+                        {/* Trigger button */}
+                        <button
+                          id={`menu-trigger-${ee.id}`}
+                          onClick={() => setOpenMenuId(prev => prev === ee.id ? null : ee.id)}
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuId === ee.id}
+                          aria-label={`Más opciones para ${ee.nombre}`}
+                          title="Más opciones"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: openMenuId === ee.id ? 'oklch(50% 0 0 / 0.07)' : 'none',
+                            border: `1px solid ${openMenuId === ee.id ? 'var(--color-border)' : 'transparent'}`,
+                            cursor: 'pointer',
+                            color: 'var(--color-text-muted)',
+                            fontSize: '16px',
+                            letterSpacing: '-0.5px',
+                            lineHeight: 1,
+                            padding: 0,
+                            transition: 'background 140ms ease, border-color 140ms ease, color 140ms ease',
+                            fontFamily: 'monospace',
+                          }}
+                          onMouseOver={e => {
+                            e.currentTarget.style.background = 'oklch(50% 0 0 / 0.07)';
+                            e.currentTarget.style.borderColor = 'var(--color-border)';
+                            e.currentTarget.style.color = 'var(--color-text)';
+                          }}
+                          onMouseOut={e => {
+                            if (openMenuId !== ee.id) {
+                              e.currentTarget.style.background = 'none';
+                              e.currentTarget.style.borderColor = 'transparent';
+                              e.currentTarget.style.color = 'var(--color-text-muted)';
+                            }
+                          }}
+                        >
+                          ···
+                        </button>
+
+                        {/* Floating dropdown */}
+                        {openMenuId === ee.id && (
+                          <div
+                            role="menu"
+                            style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              right: 0,
+                              zIndex: 50,
+                              minWidth: '200px',
+                              background: 'var(--color-surface)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              boxShadow: '0 8px 24px oklch(20% 0 0 / 0.12), 0 2px 8px oklch(20% 0 0 / 0.07)',
+                              padding: '4px',
+                              // Simple fade-in via inline animation
+                              animation: 'fadeUp 120ms cubic-bezier(0.16, 1, 0.3, 1) both',
+                            }}
+                          >
+                            {/* Separator label */}
+                            <div style={{
+                              padding: '6px 10px 4px',
+                              fontSize: 'var(--text-xs)',
+                              color: 'var(--color-text-muted)',
+                              letterSpacing: '0.06em',
+                              textTransform: 'uppercase',
+                              fontFamily: 'Satoshi, sans-serif',
+                              fontWeight: 600,
+                            }}>
+                              Acciones
+                            </div>
+
+                            {/* Delete item */}
+                            <button
+                              role="menuitem"
+                              id={`delete-ee-${ee.id}`}
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                setDeleteTarget(ee);
+                                setDeleteError(null);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--space-2)',
+                                width: '100%',
+                                padding: '8px 10px',
+                                border: 'none',
+                                borderRadius: 'var(--radius-sm)',
+                                background: 'none',
+                                cursor: 'pointer',
+                                fontSize: 'var(--text-xs)',
+                                color: 'var(--color-rojo)',
+                                fontFamily: 'Satoshi, sans-serif',
+                                textAlign: 'left',
+                                transition: 'background 120ms ease',
+                              }}
+                              onMouseOver={e => e.currentTarget.style.background = 'oklch(75% 0.1 20 / 0.1)'}
+                              onMouseOut={e => e.currentTarget.style.background = 'none'}
+                            >
+                              {/* Trash icon */}
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                <path d="M10 11v6M14 11v6"/>
+                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                              </svg>
+                              Eliminar establecimiento
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
+
                   <h3 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 800, fontSize: 'var(--text-base)', lineHeight: 1.2, margin: '0 0 var(--space-1) 0' }}>
                     {ee.nombre}
                   </h3>
@@ -195,62 +341,38 @@ export default function EstablecimientosPage() {
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                {/* ── Card actions ─────────────────────────────── */}
+                <div style={{ display: 'flex', gap: 'var(--space-2)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
+                  <Button
+                    as="a"
+                    href={`/establecimientos/${ee.id}`}
+                    variant="ghost"
+                    size="sm"
+                    style={{ flex: 1, textAlign: 'center' }}
+                  >
+                    Ver Ficha
+                  </Button>
+                  {ee.expediente_activo ? (
                     <Button
                       as="a"
-                      href={`/establecimientos/${ee.id}`}
-                      variant="ghost"
+                      href={`/expedientes/${ee.expediente_activo.id}`}
+                      variant="secondary"
                       size="sm"
                       style={{ flex: 1, textAlign: 'center' }}
                     >
-                      Ver Ficha
+                      Expediente
                     </Button>
-                    {ee.expediente_activo ? (
-                      <Button
-                        as="a"
-                        href={`/expedientes/${ee.expediente_activo.id}`}
-                        variant="secondary"
-                        size="sm"
-                        style={{ flex: 1, textAlign: 'center' }}
-                      >
-                        Expediente
-                      </Button>
-                    ) : (
-                      <Button
-                        as="a"
-                        href={`/establecimientos/${ee.id}`}
-                        variant="primary"
-                        size="sm"
-                        style={{ flex: 1, textAlign: 'center' }}
-                      >
-                        Iniciar Gestión
-                      </Button>
-                    )}
-                  </div>
-                  {/* Botón eliminar — acción destructiva separada */}
-                  <button
-                    id={`delete-ee-${ee.id}`}
-                    onClick={() => { setDeleteTarget(ee); setDeleteError(null); }}
-                    style={{
-                      background: 'none',
-                      border: '1px solid oklch(60% 0.18 15 / 0.35)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-rojo)',
-                      fontSize: 'var(--text-xs)',
-                      padding: '6px 0',
-                      cursor: 'pointer',
-                      width: '100%',
-                      fontFamily: 'Satoshi, sans-serif',
-                      letterSpacing: '0.02em',
-                      transition: 'background var(--transition-interactive)',
-                    }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'oklch(75% 0.1 20 / 0.08)')}
-                    onMouseOut={e => (e.currentTarget.style.background = 'none')}
-                    aria-label={`Eliminar ${ee.nombre}`}
-                  >
-                    🗑 Eliminar establecimiento
-                  </button>
+                  ) : (
+                    <Button
+                      as="a"
+                      href={`/establecimientos/${ee.id}`}
+                      variant="primary"
+                      size="sm"
+                      style={{ flex: 1, textAlign: 'center' }}
+                    >
+                      Iniciar Gestión
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -258,7 +380,7 @@ export default function EstablecimientosPage() {
         )}
       </div>
 
-      {/* Create Modal */}
+      {/* ── Modal: Crear Establecimiento ─────────────────────── */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo Establecimiento">
         <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
           {createError && (
@@ -310,7 +432,7 @@ export default function EstablecimientosPage() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* ── Modal: Confirmar Eliminar ─────────────────────────── */}
       <Modal
         open={!!deleteTarget}
         onClose={() => { setDeleteTarget(null); setDeleteError(null); }}
@@ -331,9 +453,9 @@ export default function EstablecimientosPage() {
               Eliminar <strong style={{ color: 'var(--color-text)' }}>{deleteTarget?.nombre}</strong> realizará las siguientes acciones:
             </p>
             <ul style={{ margin: 'var(--space-2) 0 0 var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.8 }}>
-              <li>Marcar todas las <strong>alertas activas</strong> de sus expedientes como resueltas</li>
-              <li>Archivar todos sus <strong>expedientes</strong> asociados</li>
-              <li>Eliminar el establecimiento del listado activo</li>
+              <li>Eliminar lógicamente todos sus <strong>expedientes</strong> asociados</li>
+              <li>Eliminar lógicamente todas sus <strong>alertas</strong> activas</li>
+              <li>Retirar el establecimiento del listado activo</li>
             </ul>
             <p style={{ margin: 'var(--space-3) 0 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
               Los registros históricos (certificaciones, documentos) se conservan en la base de datos.

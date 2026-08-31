@@ -89,6 +89,8 @@ Reference these guidelines when:
 - `db-use-transactions` - Transaction management
 - `db-avoid-n-plus-one` - Avoid N+1 query problems
 - `db-use-migrations` - Use migrations for schema changes
+- `db-softdelete-complete-chain` - Ensure complete @DeleteDateColumn and softDelete() in cascade chains
+- `db-cascade-via-service` - Implement inter-module cascades via service delegation, not raw foreign repository injection
 
 ### 8. API Design (MEDIUM)
 

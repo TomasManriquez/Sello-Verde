@@ -86,3 +86,33 @@ Before coding, choose a **BOLD** aesthetic direction:
 - [ ] Responsive from 375px.
 - [ ] Touch targets $\ge 44\times44px$.
 - [ ] Only 1 primary action per screen.
+
+---
+
+## 🚀 Deployment Workflow (Senior Standard)
+When asked to deploy, update, or restart the project, agents MUST NOT simply provide a `docker compose up` command. You MUST follow the professional workflow defined in `DEPLOYMENT_SOP.md`:
+
+1. **Code Sync**: Verify the latest code is pulled from the correct branch.
+2. **QA Gate**: Run linting, type-checking, and tests (Unit/E2E) for both Frontend and Backend.
+3. **Build Stability**: Use production Dockerfiles and rebuild images if changes occurred.
+4. **DB Alignment**: Ensure migrations are run before the app starts.
+5. **Verification**: Check container health statuses and perform smoke tests.
+
+Prefer recommending the execution of `./deploy.sh` for standardized deployments.
+
+## 🗄 Reglas de Backend — TypeORM & NestJS
+
+
+### Soft-Delete — Checklist obligatorio antes de implementar
+Antes de implementar cualquier operación de borrado lógico (soft-delete), el agente DEBE verificar:
+
+1. **`@DeleteDateColumn()` en la entidad.** Si la entidad no tiene la columna `deleted_at`, agregarla antes de cualquier otra operación.
+2. **Usar `repository.softDelete()`, nunca `repository.update({ estado })`.** Solo `softDelete()` escribe en `deleted_at`. Un `update` de campo de estado no filtra nada en TypeORM.
+3. **Cascada completa.** Si el borrado implica entidades relacionadas, TODAS deben cumplir los puntos 1 y 2. No basta con hacer softDelete al padre y update de estado al hijo.
+
+### Responsabilidad de dominio en cascadas
+Los servicios NO deben inyectar repositorios de módulos ajenos para ejecutar cascadas.
+- Cada servicio es el único dueño de los repositorios de su propio dominio.
+- Las cascadas se implementan mediante llamadas a métodos del servicio correcto (`servicioB.removeByPadre(id)`), no mediante inyección directa del repositorio de `B` en el servicio de `A`.
+- Si el servicio del dominio correcto no expone el método necesario, se crea ahí — no se accede al repositorio directamente desde otro módulo.
+

@@ -245,10 +245,11 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
               required
             />
             <Input
-              label="Nº Certificado (opcional)"
+              label="Nº Certificado"
               value={step1.numero_certificado}
               onChange={e => setStep1(p => ({ ...p, numero_certificado: e.target.value }))}
               placeholder="CERT-2025-XXX"
+              required
             />
             <Input
               label="Observaciones (opcional)"

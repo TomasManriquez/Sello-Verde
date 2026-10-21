@@ -1,4 +1,4 @@
-import { Controller, Put, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { Controller, Put, Delete, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common';
 import { EstablecimientosService } from './establecimientos.service';
 import { CreateLocalDto } from './dto/create-local.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -14,5 +14,11 @@ export class LocalesController {
     @Body() dto: Partial<CreateLocalDto>,
   ) {
     return this.service.updateLocal(id, dto);
+  }
+
+  // Elimina el local y sus instalaciones (borrado lógico)
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.removeLocal(id);
   }
 }

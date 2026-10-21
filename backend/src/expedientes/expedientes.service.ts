@@ -10,7 +10,8 @@ import { HitoTC6 } from './entities/hito-tc6.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Alerta } from '../alertas/entities/alerta.entity';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
-import { EstadoTC6, EstadoGeneral, EstadoAlerta } from '../common/enums';
+import { EstadoTC6, EstadoGeneral, ESTADOS_ALERTA_PENDIENTES } from '../common/enums';
+import { calcularSellos, derivarEstadoGeneral } from '../common/sellos.util';
 
 // TC6 forward transition rules
 const TC6_TRANSITIONS: Record<EstadoTC6, EstadoTC6[]> = {
@@ -45,16 +46,29 @@ export class ExpedientesService {
 
   async findAll() {
     const items = await this.expedienteRepository.find({
-      relations: ['establecimiento', 'certificaciones'],
+      relations: [
+        'establecimiento',
+        'establecimiento.locales',
+        'establecimiento.locales.instalaciones',
+        'certificaciones',
+      ],
       order: { created_at: 'DESC' },
     });
 
     const withAlerts = await Promise.all(
       items.map(async (exp) => {
         const alertasActivas = await this.alertaRepository.count({
-          where: { expediente_id: exp.id, estado: 'activa' as any },
+          where: { expediente_id: exp.id, estado: In(ESTADOS_ALERTA_PENDIENTES) },
         });
-        return { ...exp, alertas_activas: alertasActivas };
+        // Estado derivado de las instalaciones (el campo guardado es solo un caché)
+        const sellos = calcularSellos(exp.establecimiento?.locales, exp.certificaciones);
+        const estado_general = derivarEstadoGeneral({
+          expediente: exp,
+          sellos,
+          certificaciones: exp.certificaciones,
+          locales: exp.establecimiento?.locales,
+        });
+        return { ...exp, estado_general, alertas_activas: alertasActivas };
       }),
     );
 
@@ -106,7 +120,25 @@ export class ExpedientesService {
       return { ...doc, url };
     });
 
-    return { data: { ...item, documentos, alertas: enrichedAlertas }, message: 'OK' };
+    // Sello por instalación y estado general derivado (el peor sello manda)
+    const sellos = calcularSellos(item.establecimiento?.locales, item.certificaciones, alertas);
+    const estado_general = derivarEstadoGeneral({
+      expediente: item,
+      sellos,
+      certificaciones: item.certificaciones,
+      locales: item.establecimiento?.locales,
+    });
+
+    return {
+      data: {
+        ...item,
+        estado_general,
+        documentos,
+        alertas: enrichedAlertas,
+        sellos_instalaciones: sellos,
+      },
+      message: 'OK',
+    };
   }
 
   async create(dto: CreateExpedienteDto) {
@@ -188,7 +220,8 @@ export class ExpedientesService {
     item.estado_tc6 = dto.nuevo_estado;
 
     if (dto.nuevo_estado === EstadoTC6.TC6_APROBADO) {
-      item.estado_general = EstadoGeneral.EN_CERTIFICACION;
+      // TC6 aprobado ⇒ el proyecto pasa a obras / regularización (aún sin inspección)
+      item.estado_general = EstadoGeneral.EN_REGULARIZACION;
     } else if (
       item.estado_general === EstadoGeneral.SIN_GESTION ||
       item.estado_general === EstadoGeneral.EN_LEVANTAMIENTO
@@ -241,7 +274,10 @@ export class ExpedientesService {
     // Revert estado_general acorde
     if (estadoAnterior === EstadoTC6.SIN_INICIAR) {
       item.estado_general = EstadoGeneral.EN_LEVANTAMIENTO;
-    } else if (item.estado_general === EstadoGeneral.EN_CERTIFICACION) {
+    } else if (
+      item.estado_general === EstadoGeneral.EN_REGULARIZACION ||
+      item.estado_general === EstadoGeneral.EN_CERTIFICACION // legado
+    ) {
       item.estado_general = EstadoGeneral.EN_PROYECTO;
     }
 

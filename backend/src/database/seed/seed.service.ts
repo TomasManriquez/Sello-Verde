@@ -47,6 +47,8 @@ export class SeedService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
 
+    await this.normalizarEstadosLegados();
+
     if (process.env.NODE_ENV !== 'development') {
       await this.initialSetup();
       this.logger.log('Skipping database seeding in non-development environment.');
@@ -64,8 +66,22 @@ export class SeedService implements OnApplicationBootstrap {
     await this.seed();
     this.logger.log('✅ Database seeded successfully!');
   }
+  /**
+   * `en_certificacion` se reemplazó por `en_regularizacion` (TC6 aprobado ⇒ obras / regularización).
+   * Migra filas existentes; es idempotente (no hace nada si ya no quedan filas legadas).
+   */
+  private async normalizarEstadosLegados() {
+    const desde = EstadoGeneral.EN_CERTIFICACION;
+    const hacia = EstadoGeneral.EN_REGULARIZACION;
+    const est = await this.establecimientoRepo.update({ estado_general: desde }, { estado_general: hacia });
+    const exp = await this.expedienteRepo.update({ estado_general: desde }, { estado_general: hacia });
+    const total = (est.affected ?? 0) + (exp.affected ?? 0);
+    if (total > 0) {
+      this.logger.log(`Estados legados migrados: en_certificacion → en_regularizacion (${total} filas)`);
+    }
+  }
 //
-// Se extrae la logica de creacion del usuario administrador 
+// Se extrae la logica de creacion del usuario administrador
 //
   private async initialSetup() {
 
@@ -290,7 +306,7 @@ export class SeedService implements OnApplicationBootstrap {
       }),
     );
 
-    // ---- EN_CERTIFICACION ----
+    // ---- EN_REGULARIZACION ----
     // Colegio Particular N° 244 Madre de Dios (5 locales)
     const madreDeDios = await this.establecimientoRepo.save(
       this.establecimientoRepo.create({
@@ -300,7 +316,7 @@ export class SeedService implements OnApplicationBootstrap {
         nombre_propietario: 'SLEP Llanquihue',
         comuna: 'Frutillar',
         region: 'Los Lagos',
-        estado_general: EstadoGeneral.EN_CERTIFICACION,
+        estado_general: EstadoGeneral.EN_REGULARIZACION,
         cantidad_locales: 5,
       }),
     );
@@ -732,7 +748,7 @@ export class SeedService implements OnApplicationBootstrap {
         empresa_instaladora: 'Seguridad Gas Austral',
         rut_empresa: '79.456.789-0',
         estado_tc6: EstadoTC6.TC6_APROBADO,
-        estado_general: EstadoGeneral.EN_CERTIFICACION,
+        estado_general: EstadoGeneral.EN_REGULARIZACION,
         monto_presupuesto: 7500000,
         monto_ejecutado: 7500000,
         fecha_inicio: hace6Meses,
@@ -989,7 +1005,7 @@ export class SeedService implements OnApplicationBootstrap {
     this.logger.log('  - 2 sello_amarillo (Montessori, Los Linares)');
     this.logger.log('  - 2 en_levantamiento (Mario Pérez, Paraguay)');
     this.logger.log('  - 2 sin_gestion (Colonia San Martín, Carlos Springer)');
-    this.logger.log('  - 1 en_certificacion (Madre de Dios - 5 locales)');
+    this.logger.log('  - 1 en_regularizacion (Madre de Dios - 5 locales)');
     this.logger.log('  - 6 certificaciones with defectos');
     this.logger.log('  - 6 alertas auto-generated');
   }

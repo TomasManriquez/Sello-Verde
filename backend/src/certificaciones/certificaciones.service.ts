@@ -11,7 +11,13 @@ import {
   BulkCreateDefectosDto,
 } from './dto/create-certificacion.dto';
 import { UpdateCertificacionDto } from './dto/update-certificacion.dto';
-import { TipoSello, TipoAlerta, EstadoGeneral, EstadoAlerta } from '../common/enums';
+import { TipoSello, TipoAlerta, EstadoAlerta } from '../common/enums';
+import {
+  calcularSellos,
+  derivarEstadoGeneral,
+  PLAZO_REGULARIZACION_DIAS,
+  VIGENCIA_VERDE_DIAS,
+} from '../common/sellos.util';
 
 @Injectable()
 export class CertificacionesService {
@@ -48,11 +54,32 @@ export class CertificacionesService {
   async create(expedienteId: number, dto: CreateCertificacionDto) {
     const expediente = await this.expedienteRepository.findOne({
       where: { id: expedienteId },
-      relations: ['establecimiento'],
+      relations: [
+        'establecimiento',
+        'establecimiento.locales',
+        'establecimiento.locales.instalaciones',
+      ],
     });
     if (!expediente) {
       throw new NotFoundException(`Expediente #${expedienteId} no encontrado`);
     }
+
+    // Resolver local/instalación contra el establecimiento del expediente:
+    // valida pertenencia y obtiene el N° de local (no el id de BD) para los mensajes.
+    const locales = expediente.establecimiento?.locales ?? [];
+    const dueno = locales.find((l) =>
+      l.instalaciones?.some((i) => i.id === dto.instalacion_id),
+    );
+    if (!dueno) {
+      throw new BadRequestException(
+        'La instalación no pertenece al establecimiento de este expediente.',
+      );
+    }
+    if (dueno.usa_gas === false) {
+      throw new BadRequestException('El local de esta instalación está marcado como sin uso de gas.');
+    }
+    const localId = dueno.id;
+    const localInfo = ` — Local N° ${dueno.numero_local}`;
 
     // Validación: sello amarillo/rojo requiere al menos un defecto
     if (
@@ -68,6 +95,7 @@ export class CertificacionesService {
     const { defectos: defectosDto, ...certData } = dto;
     const cert = this.certRepository.create({
       ...certData,
+      local_id: localId,
       expediente_id: expedienteId,
     });
     const saved = await this.certRepository.save(cert);
@@ -85,19 +113,18 @@ export class CertificacionesService {
       const fechaInspeccion = new Date(dto.fecha_inspeccion);
       const nombreEE = expediente.establecimiento?.nombre ?? `Expediente #${expedienteId}`;
 
-      // ─── Desactivar alertas anteriores para la misma instalación (o expediente si no hay instalación) ───
+      // ─── Resolver alertas anteriores de la misma instalación (y las generales sin instalación) ───
+      // OJO: en TypeORM `{ campo: null }` se ignora en el where; por eso se usa IsNull() explícito.
+      // Alertas ya vencidas también se resuelven: la nueva inspección reemplaza su ciclo.
+      const estadosPendientes = In([
+        EstadoAlerta.ACTIVA,
+        EstadoAlerta.NOTIFICADA,
+        EstadoAlerta.VENCIDA,
+      ]);
       const alertasPrevias = await this.alertaRepository.find({
         where: [
-          {
-            expediente_id: expedienteId,
-            estado: In([EstadoAlerta.ACTIVA, EstadoAlerta.NOTIFICADA]),
-            instalacion_id: dto.instalacion_id ?? null,
-          },
-          {
-            expediente_id: expedienteId,
-            estado: In([EstadoAlerta.ACTIVA, EstadoAlerta.NOTIFICADA]),
-            instalacion_id: IsNull(), // Captura alertas legacy generales
-          }
+          { expediente_id: expedienteId, estado: estadosPendientes, instalacion_id: dto.instalacion_id },
+          { expediente_id: expedienteId, estado: estadosPendientes, instalacion_id: IsNull() },
         ],
       });
       if (alertasPrevias.length > 0) {
@@ -116,40 +143,29 @@ export class CertificacionesService {
 
       if (dto.tipo_sello === TipoSello.VERDE) {
         const fechaVencimiento = new Date(fechaInspeccion);
-        fechaVencimiento.setDate(fechaVencimiento.getDate() + 730);
-        const localInfo = dto.local_id ? ` — Local #${dto.local_id}` : '';
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + VIGENCIA_VERDE_DIAS);
         alertaData = {
           ...alertaData,
           tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
           fecha_vencimiento: fechaVencimiento,
           mensaje: `${nombreEE}${localInfo} — Sello Verde vence el ${fechaVencimiento.toLocaleDateString('es-CL')}`,
         };
-        expediente.estado_general = EstadoGeneral.SELLO_VERDE;
       } else if (dto.tipo_sello === TipoSello.ROJO || dto.tipo_sello === TipoSello.AMARILLO) {
         const fechaVencimiento = new Date(fechaInspeccion);
-        fechaVencimiento.setDate(fechaVencimiento.getDate() + 90);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + PLAZO_REGULARIZACION_DIAS);
         const tipoLabel = dto.tipo_sello === TipoSello.ROJO ? '🔴 Rojo' : '🟡 Amarillo';
-        const localInfo = dto.local_id ? ` — Local #${dto.local_id}` : '';
         alertaData = {
           ...alertaData,
           tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
           fecha_vencimiento: fechaVencimiento,
           mensaje: `${nombreEE}${localInfo} — Sello ${tipoLabel}: plazo regularización vence el ${fechaVencimiento.toLocaleDateString('es-CL')}`,
         };
-        expediente.estado_general =
-          dto.tipo_sello === TipoSello.ROJO ? EstadoGeneral.SELLO_ROJO : EstadoGeneral.SELLO_AMARILLO;
       }
 
       await this.alertaRepository.save(this.alertaRepository.create(alertaData));
 
-      // Guardar estado del expediente
-      await this.expedienteRepository.save(expediente);
-
-      // Sincronizar al establecimiento
-      if (expediente.establecimiento) {
-        expediente.establecimiento.estado_general = expediente.estado_general;
-        await this.establecimientoRepository.save(expediente.establecimiento);
-      }
+      // Actualiza el caché de estado (el estado real se deriva de las instalaciones al leer)
+      await this.sincronizarEstado(expedienteId);
     }
 
     const result = await this.certRepository.findOne({
@@ -166,7 +182,7 @@ export class CertificacionesService {
   async update(id: number, dto: UpdateCertificacionDto) {
     const cert = await this.certRepository.findOne({
       where: { id },
-      relations: ['defectos', 'expediente', 'expediente.establecimiento'],
+      relations: ['defectos', 'local', 'expediente', 'expediente.establecimiento'],
     });
     if (!cert) {
       throw new NotFoundException(`Certificación #${id} no encontrada`);
@@ -193,7 +209,7 @@ export class CertificacionesService {
     if (dto.tipo_sello || dto.fecha_inspeccion) {
       const expediente = cert.expediente;
       const nombreEE = expediente?.establecimiento?.nombre ?? `Expediente #${cert.expediente_id}`;
-      const localInfo = saved.local_id ? ` — Local #${saved.local_id}` : '';
+      const localInfo = cert.local ? ` — Local N° ${cert.local.numero_local}` : '';
       const fechaInspeccion = new Date(saved.fecha_inspeccion);
 
       let alerta = await this.alertaRepository.findOne({
@@ -204,26 +220,21 @@ export class CertificacionesService {
 
       if (saved.tipo_sello === TipoSello.VERDE) {
         const fechaVencimiento = new Date(fechaInspeccion);
-        fechaVencimiento.setDate(fechaVencimiento.getDate() + 730);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + VIGENCIA_VERDE_DIAS);
         alertaData = {
           tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
           fecha_vencimiento: fechaVencimiento,
           mensaje: `${nombreEE}${localInfo} — Sello Verde vence el ${fechaVencimiento.toLocaleDateString('es-CL')}`,
         };
-        if (expediente) expediente.estado_general = EstadoGeneral.SELLO_VERDE;
       } else if (saved.tipo_sello === TipoSello.ROJO || saved.tipo_sello === TipoSello.AMARILLO) {
         const fechaVencimiento = new Date(fechaInspeccion);
-        fechaVencimiento.setDate(fechaVencimiento.getDate() + 90);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + PLAZO_REGULARIZACION_DIAS);
         const tipoLabel = saved.tipo_sello === TipoSello.ROJO ? '🔴 Rojo' : '🟡 Amarillo';
         alertaData = {
           tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
           fecha_vencimiento: fechaVencimiento,
           mensaje: `${nombreEE}${localInfo} — Sello ${tipoLabel}: plazo regularización vence el ${fechaVencimiento.toLocaleDateString('es-CL')}`,
         };
-        if (expediente) {
-          expediente.estado_general =
-            saved.tipo_sello === TipoSello.ROJO ? EstadoGeneral.SELLO_ROJO : EstadoGeneral.SELLO_AMARILLO;
-        }
       }
 
       if (alerta) {
@@ -239,13 +250,7 @@ export class CertificacionesService {
         await this.alertaRepository.save(alerta);
       }
 
-      if (expediente) {
-        await this.expedienteRepository.save(expediente);
-        if (expediente.establecimiento) {
-          expediente.establecimiento.estado_general = expediente.estado_general;
-          await this.establecimientoRepository.save(expediente.establecimiento);
-        }
-      }
+      await this.sincronizarEstado(cert.expediente_id);
     }
 
     const result = await this.certRepository.findOne({
@@ -257,6 +262,40 @@ export class CertificacionesService {
       data: result,
       message: 'Certificación actualizada exitosamente',
     };
+  }
+
+  /**
+   * Recalcula el estado general (el peor sello de las instalaciones manda) y lo guarda
+   * como caché en el expediente y el establecimiento. La API siempre lo deriva al leer;
+   * este valor solo mantiene coherente la base para consultas directas.
+   * Usa update() para no disparar cascadas sobre las relaciones cargadas.
+   */
+  private async sincronizarEstado(expedienteId: number) {
+    const expediente = await this.expedienteRepository.findOne({
+      where: { id: expedienteId },
+      relations: [
+        'establecimiento',
+        'establecimiento.locales',
+        'establecimiento.locales.instalaciones',
+        'certificaciones',
+      ],
+    });
+    if (!expediente) return;
+
+    const sellos = calcularSellos(expediente.establecimiento?.locales, expediente.certificaciones);
+    const estado = derivarEstadoGeneral({
+      expediente,
+      sellos,
+      certificaciones: expediente.certificaciones,
+      locales: expediente.establecimiento?.locales,
+    });
+
+    await this.expedienteRepository.update(expediente.id, { estado_general: estado });
+    if (expediente.establecimiento) {
+      await this.establecimientoRepository.update(expediente.establecimiento.id, {
+        estado_general: estado,
+      });
+    }
   }
 
   // Defectos

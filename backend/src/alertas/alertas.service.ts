@@ -1,14 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, In } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThan, In } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { Alerta } from './entities/alerta.entity';
 import { Certificacion } from '../certificaciones/entities/certificacion.entity';
 import { UpdateAlertaDto } from './dto/alerta.dto';
-import { EstadoAlerta, TipoAlerta, TipoSello } from '../common/enums';
+import { EstadoAlerta, ESTADOS_ALERTA_PENDIENTES, TipoAlerta, TipoSello } from '../common/enums';
 
 @Injectable()
-export class AlertasService {
+export class AlertasService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(AlertasService.name);
+
   constructor(
     @InjectRepository(Alerta)
     private alertaRepository: Repository<Alerta>,
@@ -22,10 +24,12 @@ export class AlertasService {
     days_until_expiry?: number;
     expediente_id?: number;
   }) {
+    // innerJoin: una alerta sin expediente/establecimiento vigente (eliminado) no debe listarse,
+    // porque no hay a dónde llevar al usuario.
     const qb = this.alertaRepository
       .createQueryBuilder('alerta')
-      .leftJoinAndSelect('alerta.expediente', 'expediente')
-      .leftJoinAndSelect('expediente.establecimiento', 'establecimiento')
+      .innerJoinAndSelect('alerta.expediente', 'expediente')
+      .innerJoinAndSelect('expediente.establecimiento', 'establecimiento')
       .leftJoinAndSelect('alerta.certificacion', 'certificacion')
       .leftJoinAndSelect('alerta.instalacion', 'instalacion')
       .leftJoinAndSelect('instalacion.local', 'local')
@@ -80,12 +84,14 @@ export class AlertasService {
       throw new NotFoundException(`Alerta #${id} no encontrada`);
     }
 
-    // ─── Validación: solo se puede marcar como RESUELTA si existe sello verde vigente ───
+    // ─── Validación: solo se puede marcar como RESUELTA si hubo un sello verde POSTERIOR a la alerta ───
+    // (un verde antiguo, anterior al sello amarillo/rojo, no regulariza nada)
     if (dto.estado === EstadoAlerta.RESUELTA && alerta.tipo === TipoAlerta.PLAZO_REGULARIZACION_90D) {
       // Buscar certificación verde para la misma instalación (o expediente)
       const whereVerde: any = {
         expediente_id: alerta.expediente_id,
         tipo_sello: TipoSello.VERDE,
+        created_at: MoreThan(alerta.created_at),
       };
       if (alerta.instalacion_id) {
         whereVerde.instalacion_id = alerta.instalacion_id;
@@ -94,7 +100,7 @@ export class AlertasService {
 
       if (sellosVerdes.length === 0) {
         throw new BadRequestException(
-          'No se puede resolver esta alerta: la instalación debe tener un Sello Verde vigente primero.',
+          'No se puede resolver esta alerta: registra primero una nueva inspección con Sello Verde para la instalación.',
         );
       }
     }
@@ -112,14 +118,16 @@ export class AlertasService {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + days);
 
-    const items = await this.alertaRepository.find({
-      where: {
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: LessThanOrEqual(targetDate),
-      },
-      relations: ['expediente', 'expediente.establecimiento', 'instalacion', 'instalacion.local'],
-      order: { fecha_vencimiento: 'ASC' },
-    });
+    const items = await this.alertaRepository
+      .createQueryBuilder('alerta')
+      .innerJoinAndSelect('alerta.expediente', 'expediente')
+      .innerJoinAndSelect('expediente.establecimiento', 'establecimiento')
+      .leftJoinAndSelect('alerta.instalacion', 'instalacion')
+      .leftJoinAndSelect('instalacion.local', 'local')
+      .where('alerta.estado IN (:...estados)', { estados: ESTADOS_ALERTA_PENDIENTES })
+      .andWhere('alerta.fecha_vencimiento <= :target', { target: targetDate.toISOString().split('T')[0] })
+      .orderBy('alerta.fecha_vencimiento', 'ASC')
+      .getMany();
 
     const withDays = items.map((alerta) => {
       if (!alerta.fecha_vencimiento) return { ...alerta, dias_restantes: null };
@@ -132,6 +140,37 @@ export class AlertasService {
     });
 
     return { data: withDays, message: 'OK', total: withDays.length };
+  }
+
+  /** Al arrancar, limpia alertas que quedaron colgando de expedientes, establecimientos o instalaciones eliminados. */
+  async onApplicationBootstrap() {
+    await this.limpiarHuerfanas();
+  }
+
+  async limpiarHuerfanas() {
+    const res = await this.alertaRepository
+      .createQueryBuilder()
+      .softDelete()
+      .where('deleted_at IS NULL')
+      .andWhere(
+        `(expediente_id IN (
+            SELECT e.id FROM expedientes e
+            LEFT JOIN establecimientos s ON s.id = e.establecimiento_id
+            WHERE e.deleted_at IS NOT NULL OR s.deleted_at IS NOT NULL
+          )
+          OR instalacion_id IN (SELECT i.id FROM instalaciones i WHERE i.deleted_at IS NOT NULL))`,
+      )
+      .execute();
+    if (res.affected) {
+      this.logger.log(`Alertas huérfanas eliminadas (soft-delete): ${res.affected}`);
+    }
+    return res.affected ?? 0;
+  }
+
+  /** Cascada al eliminar instalaciones: sus alertas dejan de tener sentido. */
+  async removeByInstalaciones(instalacionIds: number[]) {
+    if (!instalacionIds || instalacionIds.length === 0) return;
+    await this.alertaRepository.softDelete({ instalacion_id: In(instalacionIds) });
   }
 
   // Daily cron at 8am

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AlertasService } from '../alertas/alertas.service';
 import { Instalacion } from './entities/instalacion.entity';
 import { Local } from '../establecimientos/entities/local.entity';
 import { CreateInstalacionDto } from './dto/create-instalacion.dto';
@@ -12,6 +13,7 @@ export class InstalacionesService {
     private instalacionRepository: Repository<Instalacion>,
     @InjectRepository(Local)
     private localRepository: Repository<Local>,
+    private alertasService: AlertasService,
   ) {}
 
   async findByLocal(localId: number) {
@@ -57,7 +59,19 @@ export class InstalacionesService {
     if (!item) {
       throw new NotFoundException(`Instalación #${id} no encontrada`);
     }
-    await this.instalacionRepository.remove(item);
+    // Borrado lógico: las inspecciones históricas se conservan; sus alertas ya no aplican
+    await this.alertasService.removeByInstalaciones([id]);
+    await this.instalacionRepository.softDelete(id);
     return { data: null, message: 'Instalación eliminada exitosamente' };
+  }
+
+  /** Cascada al eliminar un local: elimina (lógicamente) sus instalaciones y las alertas de ellas. */
+  async removeByLocal(localId: number): Promise<number> {
+    const items = await this.instalacionRepository.find({ where: { local_id: localId } });
+    if (items.length === 0) return 0;
+    const ids = items.map((i) => i.id);
+    await this.alertasService.removeByInstalaciones(ids);
+    await this.instalacionRepository.softDelete(ids);
+    return ids.length;
   }
 }

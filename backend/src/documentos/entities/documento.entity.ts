@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Expediente } from '../../expedientes/entities/expediente.entity';
+import { CategoriaDocumento } from '../../common/enums';
 
 @Entity('documentos')
 export class Documento {
@@ -38,6 +39,14 @@ export class Documento {
 
   @Column({ nullable: true })
   descripcion: string;
+
+  /** Carpeta del expediente en que se clasifica el documento */
+  @Column({
+    type: 'enum',
+    enum: CategoriaDocumento,
+    default: CategoriaDocumento.OTROS,
+  })
+  categoria: CategoriaDocumento;
 
   @CreateDateColumn()
   created_at: Date;

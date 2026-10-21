@@ -29,15 +29,8 @@ export function useDashboard() {
           } else {
             setError('Error al cargar el tablero');
           }
-          // Fallback mock data for development
-          setStats({
-            total_ee:      20,
-            sin_gestion:   4,
-            en_proyecto:   8,
-            tc6_aprobado:  3,
-            sello_verde:   5,
-            alertas_activas: 7,
-          });
+          // Sin cifras ficticias: si la API falla, el tablero muestra el error (stats queda en null)
+          setStats(null);
           setAlertas([]);
         }
       } finally {

@@ -1,31 +1,36 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { certificacionesApi, localesApi, ApiError, Local, Instalacion } from '@/lib/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { certificacionesApi, establecimientosApi, ApiError, Local, Instalacion } from '@/lib/api';
 import { Input, DateInput, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Anexo3Form, Defecto } from './Anexo3Form';
 import { Modal } from '@/components/ui/Modal';
+import { Badge } from '@/components/ui/Badge';
+import { CertificadorPicker } from '@/components/registro/CertificadorPicker';
+import { formatDate } from '@/lib/constants';
 
 interface CertificacionFormProps {
   expedienteId: number | string;
   /** ID del establecimiento para cargar locales e instalaciones */
   establecimientoId: number | string;
+  /** Instalación que llega preseleccionada (desde la ficha o el tablero) */
+  instalacionInicial?: number;
   onComplete?: () => void;
 }
 
 type SelloTipo = 'verde' | 'amarillo' | 'rojo';
 
 interface Step1Data {
-  nombre_inspector:     string;
-  entidad_certificadora:string;
-  rut_inspector:        string;
+  certificador_id:      number | null;
   fecha_inspeccion:     string;
   numero_certificado:   string;
   observaciones:        string;
 }
 
-export function CertificacionForm({ expedienteId, establecimientoId, onComplete }: CertificacionFormProps) {
+export function CertificacionForm({ expedienteId, establecimientoId, instalacionInicial, onComplete }: CertificacionFormProps) {
+  // Se consume una sola vez, cuando se cargan los locales
+  const preseleccion = useRef<number | undefined>(instalacionInicial);
   const [step, setStep]             = useState(0);
 
   // Step 0: Local & Instalación
@@ -37,9 +42,7 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
 
   // Step 1: Inspector
   const [step1, setStep1] = useState<Step1Data>({
-    nombre_inspector:     '',
-    entidad_certificadora:'',
-    rut_inspector:        '',
+    certificador_id:      null,
     fecha_inspeccion:     '',
     numero_certificado:   '',
     observaciones:        '',
@@ -59,13 +62,20 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
   useEffect(() => {
     if (!establecimientoId) return;
     setLoadingLocales(true);
-    localesApi.list(establecimientoId)
-      .then(data => setLocales(data))
+    // La ficha trae cada instalación con su sello vigente (el listado de locales no)
+    establecimientosApi.get(establecimientoId)
+      .then(ee => {
+        const data = ee.locales ?? [];
+        setLocales(data);
+        const inicial = preseleccion.current;
+        const dueno = inicial ? data.find(l => l.instalaciones?.some(i => i.id === inicial)) : undefined;
+        if (dueno) setSelectedLocal(dueno.id);
+      })
       .catch(() => setLocales([]))
       .finally(() => setLoadingLocales(false));
   }, [establecimientoId]);
 
-  // Load instalaciones when local changes
+  // Load instalaciones when local changes (si hay una sola, queda seleccionada)
   useEffect(() => {
     if (!selectedLocal) {
       setInstalaciones([]);
@@ -73,16 +83,23 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
       return;
     }
     const local = locales.find(l => l.id === selectedLocal);
-    setInstalaciones(local?.instalaciones ?? []);
-    setSelectedInstalacion('');
+    const insts = local?.instalaciones ?? [];
+    setInstalaciones(insts);
+    const inicial = preseleccion.current;
+    if (inicial && insts.some(i => i.id === inicial)) {
+      setSelectedInstalacion(inicial);
+      preseleccion.current = undefined;
+    } else {
+      setSelectedInstalacion(insts.length === 1 ? insts[0].id : '');
+    }
   }, [selectedLocal, locales]);
 
-  const step0Valid = selectedLocal !== '';
+  // El sello es por instalación: sin instalación no se puede registrar la inspección
+  const step0Valid = selectedLocal !== '' && selectedInstalacion !== '';
+  const sealActual = instalaciones.find(i => i.id === selectedInstalacion)?.sello ?? null;
 
   const step1Valid =
-    step1.nombre_inspector.trim().length > 0 &&
-    step1.entidad_certificadora.trim().length > 0 &&
-    step1.rut_inspector.trim().length > 0 &&
+    step1.certificador_id !== null &&
     step1.fecha_inspeccion.length > 0;
 
   const handleSubmit = async () => {
@@ -93,8 +110,7 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
       const payload: Record<string, unknown> = {
         ...step1,
         tipo_sello: sello,
-        local_id: selectedLocal || undefined,
-        instalacion_id: selectedInstalacion || undefined,
+        instalacion_id: selectedInstalacion,
       };
 
       if (sello !== 'verde') {
@@ -150,7 +166,7 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
   ];
 
   return (
-    <div style={{ maxWidth: '720px' }}>
+    <div>
       {/* Steps header */}
       <div className="form-steps-header" style={{ marginBottom: 'var(--space-8)' }}>
         {STEPS.slice(0, totalSteps).map(s => {
@@ -171,7 +187,7 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
         <div className="surface p-6 animate-fade-up">
           <h2 className="section-title mb-2">¿Qué instalación se certifica?</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-6)' }}>
-            Selecciona el local e instalación de gas específica que fue inspeccionada. Esto permite rastrear el historial de sellos por instalación.
+            Selecciona el local y la instalación de gas que fue inspeccionada. El sello y su vencimiento se llevan por instalación.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <Select
@@ -180,27 +196,52 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
               onChange={e => setSelectedLocal(e.target.value ? Number(e.target.value) : '')}
               options={[
                 { value: '', label: loadingLocales ? 'Cargando locales...' : '— Seleccionar local —' },
-                ...locales.map(l => ({ value: String(l.id), label: `Local ${l.numero_local} — ${l.nombre}` })),
+                ...locales
+                  .filter(l => l.usa_gas)
+                  .map(l => ({ value: String(l.id), label: `Local ${l.numero_local} — ${l.nombre}` })),
               ]}
               required
             />
             {selectedLocal && instalaciones.length > 0 && (
               <Select
                 label="Instalación de Gas"
+                required
                 value={String(selectedInstalacion)}
                 onChange={e => setSelectedInstalacion(e.target.value ? Number(e.target.value) : '')}
                 options={[
                   { value: '', label: '— Seleccionar instalación —' },
                   ...instalaciones.map(i => ({
                     value: String(i.id),
-                    label: `${i.referencia ?? 'Instalación'} · ${i.tipo_gas ?? ''} · ${i.abastecimiento ?? ''}`,
+                    label: [
+                      i.zona_abastecimiento,
+                      i.referencia,
+                      i.tipo_gas,
+                      i.abastecimiento,
+                      i.artefacto_cilindro,
+                    ].filter(Boolean).join(' · ') || `Instalación #${i.id}`,
                   })),
                 ]}
               />
             )}
             {selectedLocal && instalaciones.length === 0 && (
               <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
-                Este local no tiene instalaciones de gas registradas.
+                Este local no tiene instalaciones de gas registradas. Regístralas primero en el
+                levantamiento (Anexo 2) del establecimiento.
+              </p>
+            )}
+            {selectedInstalacion !== '' && (
+              <p style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: 0 }}>
+                Sello actual de esta instalación:
+                {sealActual && sealActual.tipo_sello ? (
+                  <>
+                    <Badge estado={sealActual.tipo_sello} />
+                    <span>
+                      inspección {formatDate(sealActual.fecha_inspeccion)} · {sealActual.tipo_sello === 'verde' ? 'vence' : 'plazo hasta'} {formatDate(sealActual.fecha_limite)}
+                    </span>
+                  </>
+                ) : (
+                  <span>sin inspección registrada</span>
+                )}
               </p>
             )}
           </div>
@@ -215,29 +256,16 @@ export function CertificacionForm({ expedienteId, establecimientoId, onComplete 
       {/* Step 1: Inspector data */}
       {step === 1 && (
         <div className="surface p-6 animate-fade-up">
-          <h2 className="section-title mb-6">Datos del Inspector</h2>
+          <h2 className="section-title mb-6">Datos de la inspección</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-4)' }}>
-            <Input
-              label="Nombre del Inspector"
-              value={step1.nombre_inspector}
-              onChange={e => setStep1(p => ({ ...p, nombre_inspector: e.target.value }))}
-              placeholder="Nombre completo"
-              required
-            />
-            <Input
-              label="Entidad Certificadora"
-              value={step1.entidad_certificadora}
-              onChange={e => setStep1(p => ({ ...p, entidad_certificadora: e.target.value }))}
-              placeholder="Nombre de la empresa"
-              required
-            />
-            <Input
-              label="RUT Inspector"
-              value={step1.rut_inspector}
-              onChange={e => setStep1(p => ({ ...p, rut_inspector: e.target.value }))}
-              placeholder="12.345.678-9"
-              required
-            />
+            <div style={{ gridColumn: '1 / -1' }}>
+              <CertificadorPicker
+                label="Certificador que validó la instalación"
+                value={step1.certificador_id}
+                onChange={id => setStep1(p => ({ ...p, certificador_id: id }))}
+                required
+              />
+            </div>
             <DateInput
               label="Fecha de Inspección"
               value={step1.fecha_inspeccion}

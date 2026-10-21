@@ -1,110 +1,105 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useDashboard } from '@/hooks/useDashboard';
 import { establecimientosApi, Establecimiento } from '@/lib/api';
-import { KPICard } from '@/components/dashboard/KPICard';
-import { AlertChip } from '@/components/dashboard/AlertChip';
+import { Button } from '@/components/ui/Button';
 import { EstablecimientoTable } from '@/components/tables/EstablecimientoTable';
+import { EtapasCartera, EtapaKey, ETAPAS_CARTERA } from '@/components/dashboard/EtapasCartera';
+import { RequiereAccion } from '@/components/dashboard/RequiereAccion';
+import { RegistrarInspeccionModal } from '@/components/dashboard/RegistrarInspeccionModal';
+
+const sectionTitle: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)', margin: 0 };
 
 export default function DashboardPage() {
   const { stats, alertas, loading: statsLoading, error: statsError } = useDashboard();
   const [establecimientos, setEstablecimientos] = useState<Establecimiento[]>([]);
   const [eeLoading, setEeLoading] = useState(true);
   const [eeError, setEeError] = useState<string | null>(null);
+  const [etapa, setEtapa] = useState<EtapaKey | null>(null);
+  const [inspeccionOpen, setInspeccionOpen] = useState(false);
 
   useEffect(() => {
     establecimientosApi.list()
-      .then(data => {
-        setEstablecimientos(data);
-      })
-      .catch(err => {
-        setEeError(err.message || 'Error al cargar establecimientos');
-      })
-      .finally(() => {
-        setEeLoading(false);
-      });
+      .then(setEstablecimientos)
+      .catch(err => setEeError(err.message || 'Error al cargar establecimientos'))
+      .finally(() => setEeLoading(false));
   }, []);
 
-  const totalAlertas = stats?.alertas_activas ?? 0;
+  // Más urgentes primero: el vencimiento más cercano (o ya vencido) arriba; sin vencimiento al final
+  const filas = useMemo(() => {
+    const visibles = etapa ? establecimientos.filter(e => e.estado_general === etapa) : establecimientos;
+    return [...visibles].sort((a, b) => {
+      const fa = a.resumen_sellos?.proximo_vencimiento ?? '9999-12-31';
+      const fb = b.resumen_sellos?.proximo_vencimiento ?? '9999-12-31';
+      return fa.localeCompare(fb) || a.nombre.localeCompare(b.nombre);
+    });
+  }, [establecimientos, etapa]);
+
+  const etapaLabel = etapa ? ETAPAS_CARTERA.find(e => e.key === etapa)?.label : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
-      {/* Page Header */}
-      <div>
-        <h1 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', marginBottom: 'var(--space-1)' }}>
-          Tablero de Control Sello Verde
-        </h1>
-        <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-          Resumen operativo y plazos críticos de instalaciones de gas en establecimientos educacionales SLEP.
-        </p>
+      {/* Encabezado con la acción principal */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+        <div>
+          <h1 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', margin: '0 0 var(--space-1)' }}>
+            Tablero de control
+          </h1>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', margin: 0 }}>
+            Estado de la certificación de gas en los establecimientos del SLEP y los plazos que requieren acción.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <Link href="/establecimientos?nuevo=1" className="btn btn-secondary">+ Establecimiento</Link>
+          <Button onClick={() => setInspeccionOpen(true)}>Registrar inspección</Button>
+        </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 'var(--space-4)',
-      }}>
-        <KPICard
-          number={statsLoading ? '…' : stats?.total_ee ?? 0}
-          label="Total de Establecimientos"
-          accentColor="var(--color-text)"
-        />
-        <KPICard
-          number={statsLoading ? '…' : stats?.sin_gestion ?? 0}
-          label="Sin Gestión Iniciada"
-          accentColor="var(--color-text-muted)"
-        />
-        <KPICard
-          number={statsLoading ? '…' : stats?.en_proyecto ?? 0}
-          label="En Proyecto TC6"
-          accentColor="var(--color-amarillo)"
-        />
-        <KPICard
-          number={statsLoading ? '…' : stats?.sello_verde ?? 0}
-          label="Con Sello Verde OK"
-          accentColor="var(--color-verde)"
-        />
-        <KPICard
-          number={statsLoading ? '…' : totalAlertas}
-          label="Alertas Activas"
-          accentColor="var(--color-rojo)"
-        />
-      </div>
-
-      {/* Upcoming Alerts Section */}
-      {alertas.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)' }}>
-            Alertas Críticas Próximas (30 días)
-          </h2>
-          <div style={{
-            display: 'flex',
-            gap: 'var(--space-3)',
-            overflowX: 'auto',
-            paddingBottom: 'var(--space-2)',
-            scrollbarWidth: 'thin',
-          }}>
-            {alertas.map(alerta => (
-              <AlertChip key={alerta.id} alerta={alerta} />
-            ))}
-          </div>
+      {statsError && (
+        <div style={{ color: 'var(--color-rojo)', background: 'oklch(75% 0.1 20 / 0.1)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+          No se pudieron cargar los indicadores: {statsError}
         </div>
       )}
 
-      {/* Table Section */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-        <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)' }}>
-          Estado General de Establecimientos
-        </h2>
+      {/* 1. Qué requiere atención hoy */}
+      <RequiereAccion alertas={alertas} loading={statsLoading} />
+
+      {/* 2. Cómo está la cartera */}
+      <EtapasCartera stats={stats} loading={statsLoading} selected={etapa} onSelect={setEtapa} />
+
+      {/* 3. Detalle por establecimiento */}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <h2 style={sectionTitle}>
+            {etapaLabel ? `Establecimientos en “${etapaLabel}”` : 'Todos los establecimientos'}
+          </h2>
+          {etapa && (
+            <button
+              type="button"
+              onClick={() => setEtapa(null)}
+              style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, padding: 'var(--space-2) 0', minHeight: 44 }}
+            >
+              Quitar filtro ✕
+            </button>
+          )}
+        </div>
+        {eeError && (
+          <div style={{ color: 'var(--color-rojo)', background: 'oklch(75% 0.1 20 / 0.1)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+            {eeError}
+          </div>
+        )}
         <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
           <EstablecimientoTable
-            establecimientos={establecimientos}
+            establecimientos={filas}
             loading={eeLoading}
+            emptyMessage={etapa ? 'Ningún establecimiento está en esta etapa.' : undefined}
           />
         </div>
-      </div>
+      </section>
+
+      <RegistrarInspeccionModal open={inspeccionOpen} onClose={() => setInspeccionOpen(false)} establecimientos={establecimientos} />
     </div>
   );
 }

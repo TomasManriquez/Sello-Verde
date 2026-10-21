@@ -18,16 +18,33 @@ export const API_HOST = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:300
 export const TOKEN_KEY = 'sv_token';
 
 // ── Estado General ───────────────────────────────────────────
+// Debe reflejar el enum EstadoGeneral del backend (más `tc6_aprobado`, usado solo como
+// etapa TC6 en badges). `en_certificacion` es un valor legado que se muestra igual que
+// `en_regularizacion`.
 export const ESTADO_GENERAL = {
   sin_gestion: 'Sin Gestión',
-  en_proyecto: 'En Proyecto',
-  tc6_aprobado: 'TC6 Aprobado',
+  en_levantamiento: 'En Levantamiento',
+  en_proyecto: 'En Proyecto TC6',
+  en_regularizacion: 'Obras / Regularización',
+  en_certificacion: 'Obras / Regularización',
   sello_verde: 'Sello Verde',
   sello_amarillo: 'Sello Amarillo',
   sello_rojo: 'Sello Rojo',
+  tc6_aprobado: 'TC6 Aprobado',
 } as const;
 
 export type EstadoGeneral = keyof typeof ESTADO_GENERAL;
+
+/** Estados ofrecidos en los filtros (sin duplicados ni valores legados). */
+export const ESTADO_GENERAL_OPCIONES: EstadoGeneral[] = [
+  'sin_gestion',
+  'en_levantamiento',
+  'en_proyecto',
+  'en_regularizacion',
+  'sello_verde',
+  'sello_amarillo',
+  'sello_rojo',
+];
 
 // ── TC6 States ───────────────────────────────────────────────
 export const TC6_ESTADOS = [
@@ -72,6 +89,18 @@ export const ZONA_OPTIONS = [
 ] as const;
 export type Zona = typeof ZONA_OPTIONS[number];
 
+// ── Carpetas de documentos ───────────────────────────────────
+// Claves = valores de CategoriaDocumento en el backend
+export const CATEGORIAS_DOCUMENTO = [
+  { key: 'planos_diseno',      label: 'Planos de diseño',        hint: 'Planos y proyecto de diseño' },
+  { key: 'actas_reparaciones', label: 'Actas de reparaciones',   hint: 'Actas de obras y reparaciones' },
+  { key: 'memorias_tecnicas',  label: 'Memorias técnicas',       hint: 'Memorias de cálculo y técnicas' },
+  { key: 'certificados_sec',   label: 'Certificados SEC',        hint: 'Certificados, TC6 aprobado y resoluciones' },
+  { key: 'otros',              label: 'Otros documentos',        hint: 'Todo lo que no calza en las demás carpetas' },
+] as const;
+
+export type CategoriaDocumento = typeof CATEGORIAS_DOCUMENTO[number]['key'];
+
 // ── Defectos Anexo 3 ─────────────────────────────────────────
 export const DEFECTOS_ANEXO3 = [
   { id: 'fugas_artefactos',  label: 'Fugas de gas en artefactos' },
@@ -89,16 +118,17 @@ export type DefectoId = typeof DEFECTOS_ANEXO3[number]['id'];
 export const ALERTA_ESTADOS = {
   activa:      'Activa',
   notificada:  'Notificada',
+  vencida:     'Vencida',
   resuelta:    'Resuelta',
 } as const;
 
 export type AlertaEstado = keyof typeof ALERTA_ESTADOS;
 
 // ── Alerta Tipo ──────────────────────────────────────────────
+// Claves = valores reales de TipoAlerta en el backend
 export const ALERTA_TIPOS = {
-  vencimiento_sello:   'Vencimiento Sello',
-  plazo_regularizacion:'Plazo Regularización',
-  tc6_pendiente:       'TC6 Pendiente',
+  vencimiento_sello_verde:  'Sello Verde (vence a los 2 años)',
+  plazo_regularizacion_90d: 'Plazo de regularización (90 días)',
 } as const;
 
 export type AlertaTipo = keyof typeof ALERTA_TIPOS;
@@ -106,7 +136,10 @@ export type AlertaTipo = keyof typeof ALERTA_TIPOS;
 // ── Badge color map ──────────────────────────────────────────
 export const ESTADO_BADGE_CLASS: Record<string, string> = {
   sin_gestion:   'badge-gris',
+  en_levantamiento: 'badge-gris',
   en_proyecto:   'badge-primary',
+  en_regularizacion: 'badge-primary',
+  en_certificacion:  'badge-primary',
   tc6_aprobado:  'badge-primary',
   sello_verde:   'badge-verde',
   sello_amarillo:'badge-amarillo',
@@ -116,6 +149,7 @@ export const ESTADO_BADGE_CLASS: Record<string, string> = {
   rojo:          'badge-rojo',
   activa:        'badge-rojo',
   notificada:    'badge-amarillo',
+  vencida:       'badge-rojo',
   resuelta:      'badge-verde',
 };
 
@@ -149,6 +183,35 @@ export function daysUntil(dateStr: string | null | undefined): number {
   const target = new Date(dateStr);
   const now    = new Date();
   return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/** Días restantes de una alerta: usa el valor del backend o lo calcula desde la fecha. */
+export function diasRestantesAlerta(a: { dias_restantes?: number | null; fecha_vencimiento: string }): number {
+  return typeof a.dias_restantes === 'number' ? a.dias_restantes : daysUntil(a.fecha_vencimiento);
+}
+
+/** Ficha del establecimiento al que pertenece la alerta. Sin establecimiento conocido, lleva al listado. */
+export function fichaHref(a: { expediente_id: number; expediente?: { establecimiento_id?: number; establecimiento?: { id: number } } | null }): string {
+  const eeId = a.expediente?.establecimiento_id ?? a.expediente?.establecimiento?.id;
+  return eeId ? `/establecimientos/${eeId}` : '/establecimientos';
+}
+
+/** Texto corto que identifica una instalación: "Local 1 · Casino · Cilindros 45 kg". */
+export function instalacionLabel(
+  inst?: {
+    zona_abastecimiento?: string | null;
+    referencia?: string | null;
+    abastecimiento?: string | null;
+    local?: { numero_local: number } | null;
+  } | null,
+): string {
+  if (!inst) return '';
+  return [
+    inst.local ? `Local ${inst.local.numero_local}` : null,
+    inst.zona_abastecimiento,
+    inst.referencia,
+    inst.abastecimiento,
+  ].filter(Boolean).join(' · ');
 }
 
 export function formatBytes(bytes: number, decimals = 2) {

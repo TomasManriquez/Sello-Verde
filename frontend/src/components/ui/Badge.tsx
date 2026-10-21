@@ -17,6 +17,7 @@ const LABEL_MAP: Record<string, string> = {
   rojo:     'Rojo',
   activa:   'Activa',
   notificada: 'Notificada',
+  vencida:  'Vencida',
   resuelta: 'Resuelta',
   sin_iniciar:    'Sin Iniciar',
   en_elaboracion: 'En Elaboración',

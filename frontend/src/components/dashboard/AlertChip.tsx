@@ -3,18 +3,19 @@
 import React from 'react';
 import Link from 'next/link';
 import { Alerta } from '@/lib/api';
-import { getUrgencyClass, formatDate } from '@/lib/constants';
+import { getUrgencyClass, formatDate, diasRestantesAlerta, fichaHref } from '@/lib/constants';
 
 interface AlertChipProps {
   alerta: Alerta;
 }
 
 export function AlertChip({ alerta }: AlertChipProps) {
-  const urgencyClass = getUrgencyClass(alerta.dias_restantes);
+  const dias = diasRestantesAlerta(alerta);
+  const urgencyClass = getUrgencyClass(dias);
 
   return (
     <Link
-      href={`/expedientes/${alerta.expediente_id}`}
+      href={fichaHref(alerta)}
       className={`alert-chip ${urgencyClass}`}
       title={`${alerta.expediente?.establecimiento?.nombre ?? 'Expediente'} — ${alerta.tipo}`}
     >
@@ -31,9 +32,7 @@ export function AlertChip({ alerta }: AlertChipProps) {
         {alerta.expediente?.establecimiento?.nombre ?? `Exp. #${alerta.expediente_id}`}
       </span>
       <span style={{ opacity: 0.8 }}>
-        {alerta.dias_restantes < 0
-          ? `Vencida hace ${Math.abs(alerta.dias_restantes)}d`
-          : `${alerta.dias_restantes}d`}
+        {dias < 0 ? `Vencida hace ${Math.abs(dias)}d` : `${dias}d`}
       </span>
       <span style={{ opacity: 0.6, fontSize: '10px' }}>
         {formatDate(alerta.fecha_vencimiento)}

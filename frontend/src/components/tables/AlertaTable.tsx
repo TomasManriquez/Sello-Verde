@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Alerta } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { formatDate, getUrgencyColor } from '@/lib/constants';
+import { ALERTA_TIPOS, formatDate, getUrgencyColor, diasRestantesAlerta, instalacionLabel, fichaHref } from '@/lib/constants';
 
 interface AlertaTableProps {
   alertas: Alerta[];
@@ -21,18 +21,15 @@ function getAlertaTitle(alerta: Alerta): string {
     `Expediente #${alerta.expediente_id}`;
 
   // Info de instalación/local
-  let instalacionInfo = '';
-  if (alerta.instalacion?.local?.nombre) {
-    instalacionInfo = ` — ${alerta.instalacion.local.nombre}`;
-  } else if (alerta.instalacion_id) {
-    instalacionInfo = ` — Instalación #${alerta.instalacion_id}`;
-  }
+  const detalle = instalacionLabel(alerta.instalacion);
+  const instalacionInfo = detalle
+    ? ` — ${detalle}`
+    : alerta.instalacion_id
+      ? ` — Instalación #${alerta.instalacion_id}`
+      : '';
 
-  // Tipo de sello
-  const tipoLabel = (alerta.tipo || alerta.tipo_alerta || '')
-    .replace('vencimiento_sello_verde', 'Sello Verde')
-    .replace('plazo_regularizacion_90d', 'Regularización')
-    .replace(/_/g, ' ');
+  const tipo = (alerta.tipo || alerta.tipo_alerta || '') as keyof typeof ALERTA_TIPOS;
+  const tipoLabel = ALERTA_TIPOS[tipo] ?? String(tipo).replace(/_/g, ' ');
 
   return `${eeNombre}${instalacionInfo} · ${tipoLabel}`;
 }
@@ -60,8 +57,9 @@ export function AlertaTable({ alertas, loading, onMarcarResuelta }: AlertaTableP
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {alertas.map((alerta, i) => {
-        const urgencyColor = getUrgencyColor(alerta.dias_restantes);
-        const isOverdue    = alerta.dias_restantes < 0;
+        const dias         = diasRestantesAlerta(alerta);
+        const urgencyColor = getUrgencyColor(dias);
+        const isOverdue    = dias < 0;
         const title        = getAlertaTitle(alerta);
 
         return (
@@ -88,7 +86,7 @@ export function AlertaTable({ alertas, loading, onMarcarResuelta }: AlertaTableP
                   lineHeight: 1,
                 }}
               >
-                {isOverdue ? `+${Math.abs(alerta.dias_restantes)}` : alerta.dias_restantes}
+                {isOverdue ? `+${Math.abs(dias)}` : dias}
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                 {isOverdue ? 'días vencida' : 'días'}
@@ -97,7 +95,7 @@ export function AlertaTable({ alertas, loading, onMarcarResuelta }: AlertaTableP
 
             {/* Title & info — clickeable a expediente */}
             <Link
-              href={`/expedientes/${alerta.expediente_id}`}
+              href={fichaHref(alerta)}
               style={{ flex: 1, minWidth: '200px', textDecoration: 'none', color: 'inherit' }}
             >
               <div style={{ fontWeight: 600, marginBottom: '2px' }}>
@@ -123,7 +121,7 @@ export function AlertaTable({ alertas, loading, onMarcarResuelta }: AlertaTableP
                 </Button>
               )}
 
-              <Link href={`/expedientes/${alerta.expediente_id}`}>
+              <Link href={fichaHref(alerta)}>
                 <Button variant="ghost" size="sm">
                   Ver →
                 </Button>

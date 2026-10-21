@@ -1,62 +1,59 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { establecimientosApi, Establecimiento } from '@/lib/api';
+import React, { useEffect, useState } from 'react';
+import { establecimientosApi, expedientesApi, Establecimiento } from '@/lib/api';
+import { EmpresaPicker } from '@/components/registro/EmpresaPicker';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { ESTADO_GENERAL } from '@/lib/constants';
+import { EstablecimientoTable } from '@/components/tables/EstablecimientoTable';
+import { ESTADO_GENERAL, ESTADO_GENERAL_OPCIONES } from '@/lib/constants';
+
+const NUEVO_VACIO = {
+  rbd: '',
+  nombre: '',
+  direccion: '',
+  comuna: '',
+  region: 'Los Lagos',
+  nombre_propietario: 'SLEP Llanquihue',
+};
 
 export default function EstablecimientosPage() {
   const [establecimientos, setEstablecimientos] = useState<Establecimiento[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters state
+  // Filtros
   const [search, setSearch] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
 
-  // New EE Modal state
+  // Alta
   const [modalOpen, setModalOpen] = useState(false);
-  const [newEeData, setNewEeData] = useState({
-    rbd: '',
-    nombre: '',
-    direccion: '',
-    comuna: '',
-    region: 'Los Lagos',
-    nombre_propietario: 'SLEP Llanquihue',
-  });
+  const [newEeData, setNewEeData] = useState(NUEVO_VACIO);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  // Delete state
+  // Eliminación
   const [deleteTarget, setDeleteTarget] = useState<Establecimiento | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Contextual menu — tracks which card's menu is open
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  // Selección y exportación
+  const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-  // Close contextual menu when clicking outside or pressing Escape
+  // Asignación de empresa en bloque
+  const [asignarOpen, setAsignarOpen] = useState(false);
+  const [empresaAsignar, setEmpresaAsignar] = useState<number | null>(null);
+  const [asignando, setAsignando] = useState(false);
+  const [asignarError, setAsignarError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  // El tablero enlaza aquí con ?nuevo=1 para abrir directamente el formulario de alta
   useEffect(() => {
-    if (openMenuId === null) return;
-    const handleOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenMenuId(null);
-    };
-    document.addEventListener('mousedown', handleOutside);
-    document.addEventListener('keydown', handleEsc);
-    return () => {
-      document.removeEventListener('mousedown', handleOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, [openMenuId]);
+    if (new URLSearchParams(window.location.search).get('nuevo') === '1') setModalOpen(true);
+  }, []);
 
   const loadData = () => {
     setLoading(true);
@@ -66,21 +63,17 @@ export default function EstablecimientosPage() {
     })
       .then(data => {
         setEstablecimientos(data);
+        // La selección solo conserva los que siguen en la lista
+        setSeleccionados(prev => new Set(data.filter(e => prev.has(e.id)).map(e => e.id)));
         setError(null);
       })
-      .catch(err => {
-        setError(err.message || 'Error al cargar establecimientos');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      .catch(err => setError(err.message || 'Error al cargar establecimientos'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      loadData();
-    }, 300);
-    return () => clearTimeout(delayDebounceFn);
+    const t = setTimeout(loadData, 300);
+    return () => clearTimeout(t);
   }, [search, estadoFilter]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -92,10 +85,10 @@ export default function EstablecimientosPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      const created = await establecimientosApi.create(newEeData);
-      setEstablecimientos(prev => [created, ...prev]);
+      await establecimientosApi.create(newEeData);
       setModalOpen(false);
-      setNewEeData({ rbd: '', nombre: '', direccion: '', comuna: '', region: 'Los Lagos', nombre_propietario: 'SLEP Llanquihue' });
+      setNewEeData(NUEVO_VACIO);
+      loadData();
     } catch (err: any) {
       setCreateError(err.message || 'Error al crear establecimiento');
     } finally {
@@ -110,6 +103,7 @@ export default function EstablecimientosPage() {
     try {
       await establecimientosApi.remove(deleteTarget.id);
       setEstablecimientos(prev => prev.filter(e => e.id !== deleteTarget.id));
+      setSeleccionados(prev => { const n = new Set(prev); n.delete(deleteTarget.id); return n; });
       setDeleteTarget(null);
     } catch (err: any) {
       setDeleteError(err.message || 'Error al eliminar establecimiento');
@@ -118,334 +112,196 @@ export default function EstablecimientosPage() {
     }
   };
 
-  const estadoOptions = Object.entries(ESTADO_GENERAL).map(([value, label]) => ({
-    value,
-    label,
-  }));
+  const toggle = (id: number) =>
+    setSeleccionados(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+
+  const toggleTodos = (marcar: boolean) =>
+    setSeleccionados(marcar ? new Set(establecimientos.map(e => e.id)) : new Set());
+
+  const asignarEmpresa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!empresaAsignar) {
+      setAsignarError('Selecciona una empresa.');
+      return;
+    }
+    setAsignando(true);
+    setAsignarError(null);
+    try {
+      const r = await expedientesApi.asignarEmpresa(Array.from(seleccionados), empresaAsignar);
+      setAsignarOpen(false);
+      setAviso(
+        `Empresa asignada: ${r.creados} gestión(es) iniciada(s) y ${r.actualizados} actualizada(s)` +
+          (r.omitidos.length ? `; ${r.omitidos.length} omitido(s)` : '') + '.',
+      );
+      setSeleccionados(new Set());
+      loadData();
+    } catch (err: any) {
+      setAsignarError(err.message || 'No se pudo asignar la empresa');
+    } finally {
+      setAsignando(false);
+    }
+  };
+
+  const exportar = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await establecimientosApi.exportExcel(Array.from(seleccionados));
+    } catch (err: any) {
+      setExportError(err.message || 'No se pudo generar el Excel');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const estadoOptions = ESTADO_GENERAL_OPCIONES.map(value => ({ value, label: ESTADO_GENERAL[value] }));
+  const hayFiltros = search !== '' || estadoFilter !== '';
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 'var(--space-6)', alignItems: 'start' }}>
+    <div className="hub-grid" style={{ gridTemplateColumns: 'minmax(220px, 260px) 1fr' }}>
 
-      {/* Filters Sidebar */}
+      {/* Filtros */}
       <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', position: 'sticky', top: 'var(--space-4)' }}>
         <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', marginBottom: 'var(--space-4)' }}>
-          Filtros de Búsqueda
+          Filtros de búsqueda
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <Input
-            label="Buscar por Nombre / RBD"
+            label="Buscar por nombre / RBD / comuna"
             placeholder="Ej: Bernardo Philippi"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
           <Select
-            label="Estado del Establecimiento"
+            label="Etapa o sello"
             value={estadoFilter}
             onChange={e => setEstadoFilter(e.target.value)}
-            options={[{ value: '', label: 'Todos los estados' }, ...estadoOptions]}
+            options={[{ value: '', label: 'Todas' }, ...estadoOptions]}
           />
-          <Button variant="secondary" onClick={() => { setSearch(''); setEstadoFilter(''); }} style={{ marginTop: 'var(--space-2)' }}>
-            Limpiar Filtros
+          <Button variant="secondary" onClick={() => { setSearch(''); setEstadoFilter(''); }} disabled={!hayFiltros}>
+            Limpiar filtros
           </Button>
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Listado */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)' }}>
-              Establecimientos Educacionales
+            <h1 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', margin: 0 }}>
+              Establecimientos educacionales
             </h1>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-              Listado general de establecimientos asociados al servicio.
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', margin: 0 }}>
+              Selecciona uno o más para exportar su información a Excel.
             </p>
           </div>
-          <Button onClick={() => setModalOpen(true)}>
-            + Agregar Establecimiento
-          </Button>
+          <Button onClick={() => setModalOpen(true)}>+ Agregar establecimiento</Button>
         </div>
 
-        {error && (
+        {/* Barra de selección */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', minHeight: 44 }}>
+          <span aria-live="polite" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            {loading
+              ? 'Cargando…'
+              : seleccionados.size > 0
+                ? `${seleccionados.size} de ${establecimientos.length} seleccionados`
+                : `${establecimientos.length} ${establecimientos.length === 1 ? 'establecimiento' : 'establecimientos'}`}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => { setEmpresaAsignar(null); setAsignarError(null); setAsignarOpen(true); }}
+            disabled={seleccionados.size === 0}
+            title={seleccionados.size === 0 ? 'Selecciona al menos un establecimiento' : undefined}
+          >
+            🏢 Asignar empresa{seleccionados.size > 0 ? ` (${seleccionados.size})` : ''}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={exportar}
+            loading={exporting}
+            disabled={seleccionados.size === 0}
+            title={seleccionados.size === 0 ? 'Selecciona al menos un establecimiento' : undefined}
+          >
+            ⬇️ Exportar a Excel{seleccionados.size > 0 ? ` (${seleccionados.size})` : ''}
+          </Button>
+          {seleccionados.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setSeleccionados(new Set())}
+              style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, minHeight: 44 }}
+            >
+              Quitar selección
+            </button>
+          )}
+        </div>
+
+        {aviso && (
+          <div role="status" style={{ color: 'var(--color-primary)', background: 'var(--color-primary-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+            <span>✓ {aviso}</span>
+            <button type="button" onClick={() => setAviso(null)} aria-label="Cerrar aviso" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+          </div>
+        )}
+
+        {(error || exportError) && (
           <div style={{ color: 'var(--color-rojo)', background: 'oklch(75% 0.1 20 / 0.1)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
-            {error}
+            {error || exportError}
           </div>
         )}
 
-        {loading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--space-4)' }}>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: '160px', borderRadius: 'var(--radius-lg)' }} />
-            ))}
-          </div>
-        ) : establecimientos.length === 0 ? (
-          <div className="empty-state surface" style={{ height: 200 }}>
-            <span className="empty-state-icon">🏫</span>
-            <p>No se encontraron establecimientos con los criterios seleccionados.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--space-4)' }}>
-            {establecimientos.map((ee, i) => (
-              <div
-                key={ee.id}
-                className="surface animate-fade-up"
-                style={{
-                  padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-lg)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: 'var(--space-4)',
-                  animationDelay: `${i * 50}ms`,
-                  position: 'relative',
-                }}
-              >
-                {/* ── Card header ─────────────────────────────── */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'Satoshi, sans-serif', fontWeight: 700 }}>
-                      RBD {ee.rbd}
-                    </span>
-
-                    {/* Badge + ··· menu trigger agrupados */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      <Badge estado={ee.estado_general} />
-
-                      {/* ─── Contextual menu ─── */}
-                      <div
-                        ref={openMenuId === ee.id ? menuRef : null}
-                        style={{ position: 'relative' }}
-                      >
-                        {/* Trigger button */}
-                        <button
-                          id={`menu-trigger-${ee.id}`}
-                          onClick={() => setOpenMenuId(prev => prev === ee.id ? null : ee.id)}
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuId === ee.id}
-                          aria-label={`Más opciones para ${ee.nombre}`}
-                          title="Más opciones"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: 'var(--radius-sm)',
-                            background: openMenuId === ee.id ? 'oklch(50% 0 0 / 0.07)' : 'none',
-                            border: `1px solid ${openMenuId === ee.id ? 'var(--color-border)' : 'transparent'}`,
-                            cursor: 'pointer',
-                            color: 'var(--color-text-muted)',
-                            fontSize: '16px',
-                            letterSpacing: '-0.5px',
-                            lineHeight: 1,
-                            padding: 0,
-                            transition: 'background 140ms ease, border-color 140ms ease, color 140ms ease',
-                            fontFamily: 'monospace',
-                          }}
-                          onMouseOver={e => {
-                            e.currentTarget.style.background = 'oklch(50% 0 0 / 0.07)';
-                            e.currentTarget.style.borderColor = 'var(--color-border)';
-                            e.currentTarget.style.color = 'var(--color-text)';
-                          }}
-                          onMouseOut={e => {
-                            if (openMenuId !== ee.id) {
-                              e.currentTarget.style.background = 'none';
-                              e.currentTarget.style.borderColor = 'transparent';
-                              e.currentTarget.style.color = 'var(--color-text-muted)';
-                            }
-                          }}
-                        >
-                          ···
-                        </button>
-
-                        {/* Floating dropdown */}
-                        {openMenuId === ee.id && (
-                          <div
-                            role="menu"
-                            style={{
-                              position: 'absolute',
-                              top: 'calc(100% + 6px)',
-                              right: 0,
-                              zIndex: 50,
-                              minWidth: '200px',
-                              background: 'var(--color-surface)',
-                              border: '1px solid var(--color-border)',
-                              borderRadius: 'var(--radius-md)',
-                              boxShadow: '0 8px 24px oklch(20% 0 0 / 0.12), 0 2px 8px oklch(20% 0 0 / 0.07)',
-                              padding: '4px',
-                              // Simple fade-in via inline animation
-                              animation: 'fadeUp 120ms cubic-bezier(0.16, 1, 0.3, 1) both',
-                            }}
-                          >
-                            {/* Separator label */}
-                            <div style={{
-                              padding: '6px 10px 4px',
-                              fontSize: 'var(--text-xs)',
-                              color: 'var(--color-text-muted)',
-                              letterSpacing: '0.06em',
-                              textTransform: 'uppercase',
-                              fontFamily: 'Satoshi, sans-serif',
-                              fontWeight: 600,
-                            }}>
-                              Acciones
-                            </div>
-
-                            {/* Delete item */}
-                            <button
-                              role="menuitem"
-                              id={`delete-ee-${ee.id}`}
-                              onClick={() => {
-                                setOpenMenuId(null);
-                                setDeleteTarget(ee);
-                                setDeleteError(null);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 'var(--space-2)',
-                                width: '100%',
-                                padding: '8px 10px',
-                                border: 'none',
-                                borderRadius: 'var(--radius-sm)',
-                                background: 'none',
-                                cursor: 'pointer',
-                                fontSize: 'var(--text-xs)',
-                                color: 'var(--color-rojo)',
-                                fontFamily: 'Satoshi, sans-serif',
-                                textAlign: 'left',
-                                transition: 'background 120ms ease',
-                              }}
-                              onMouseOver={e => e.currentTarget.style.background = 'oklch(75% 0.1 20 / 0.1)'}
-                              onMouseOut={e => e.currentTarget.style.background = 'none'}
-                            >
-                              {/* Trash icon */}
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                                <path d="M10 11v6M14 11v6"/>
-                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                              </svg>
-                              Eliminar establecimiento
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <h3 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 800, fontSize: 'var(--text-base)', lineHeight: 1.2, margin: '0 0 var(--space-1) 0' }}>
-                    {ee.nombre}
-                  </h3>
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-                    📍 {ee.direccion}
-                  </p>
-                </div>
-
-                {/* ── Card actions ─────────────────────────────── */}
-                <div style={{ display: 'flex', gap: 'var(--space-2)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
-                  <Button
-                    as="a"
-                    href={`/establecimientos/${ee.id}`}
-                    variant="ghost"
-                    size="sm"
-                    style={{ flex: 1, textAlign: 'center' }}
-                  >
-                    Ver Ficha
-                  </Button>
-                  {ee.expediente_activo ? (
-                    <Button
-                      as="a"
-                      href={`/expedientes/${ee.expediente_activo.id}`}
-                      variant="secondary"
-                      size="sm"
-                      style={{ flex: 1, textAlign: 'center' }}
-                    >
-                      Expediente
-                    </Button>
-                  ) : (
-                    <Button
-                      as="a"
-                      href={`/establecimientos/${ee.id}`}
-                      variant="primary"
-                      size="sm"
-                      style={{ flex: 1, textAlign: 'center' }}
-                    >
-                      Iniciar Gestión
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
+          <EstablecimientoTable
+            establecimientos={establecimientos}
+            loading={loading}
+            emptyMessage="No se encontraron establecimientos con los criterios seleccionados."
+            seleccion={{ ids: seleccionados, onToggle: toggle, onToggleTodos: toggleTodos }}
+            onEliminar={(ee) => { setDeleteTarget(ee); setDeleteError(null); }}
+          />
+        </div>
       </div>
 
-      {/* ── Modal: Crear Establecimiento ─────────────────────── */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo Establecimiento">
-        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
-          {createError && (
-            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>
-              ⚠️ {createError}
-            </div>
-          )}
-          <Input
-            label="RBD del Establecimiento"
-            placeholder="Ej: 7976-6"
-            value={newEeData.rbd}
-            onChange={e => setNewEeData(prev => ({ ...prev, rbd: e.target.value }))}
-            required
-          />
-          <Input
-            label="Nombre del Establecimiento"
-            placeholder="Ej: Escuela Bernardo Philippi"
-            value={newEeData.nombre}
-            onChange={e => setNewEeData(prev => ({ ...prev, nombre: e.target.value }))}
-            required
-          />
-          <Input
-            label="Dirección"
-            placeholder="Ej: Avenida Philippi 563"
-            value={newEeData.direccion}
-            onChange={e => setNewEeData(prev => ({ ...prev, direccion: e.target.value }))}
-            required
-          />
-          <Input
-            label="Comuna"
-            placeholder="Ej: Frutillar"
-            value={newEeData.comuna}
-            onChange={e => setNewEeData(prev => ({ ...prev, comuna: e.target.value }))}
-          />
-          <Input
-            label="Propietario / Representante"
-            value={newEeData.nombre_propietario}
-            onChange={e => setNewEeData(prev => ({ ...prev, nombre_propietario: e.target.value }))}
-            required
-          />
-          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
-            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" loading={creating}>
-              Crear Establecimiento
-            </Button>
+      {/* Modal: asignar empresa a los seleccionados */}
+      <Modal open={asignarOpen} onClose={() => setAsignarOpen(false)} title="Asignar empresa contratista">
+        <form onSubmit={asignarEmpresa} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+            Se asignará la empresa a <strong style={{ color: 'var(--color-text)' }}>{seleccionados.size} {seleccionados.size === 1 ? 'establecimiento' : 'establecimientos'}</strong>.
+            A los que aún no tienen la gestión iniciada se les abrirá con esta empresa; a los que ya la tienen se les cambiará la empresa.
+          </p>
+          {asignarError && <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>⚠️ {asignarError}</div>}
+          <EmpresaPicker value={empresaAsignar} onChange={setEmpresaAsignar} required autoSeleccionar={false} />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={() => setAsignarOpen(false)}>Cancelar</Button>
+            <Button type="submit" loading={asignando}>Asignar empresa</Button>
           </div>
         </form>
       </Modal>
 
-      {/* ── Modal: Confirmar Eliminar ─────────────────────────── */}
-      <Modal
-        open={!!deleteTarget}
-        onClose={() => { setDeleteTarget(null); setDeleteError(null); }}
-        title="Eliminar Establecimiento"
-        maxWidth="480px"
-      >
+      {/* Modal: crear */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo establecimiento">
+        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
+          {createError && <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>⚠️ {createError}</div>}
+          <Input label="RBD del establecimiento" placeholder="Ej: 7976-6" value={newEeData.rbd} onChange={e => setNewEeData(p => ({ ...p, rbd: e.target.value }))} required />
+          <Input label="Nombre del establecimiento" placeholder="Ej: Escuela Bernardo Philippi" value={newEeData.nombre} onChange={e => setNewEeData(p => ({ ...p, nombre: e.target.value }))} required />
+          <Input label="Dirección" placeholder="Ej: Avenida Philippi 563" value={newEeData.direccion} onChange={e => setNewEeData(p => ({ ...p, direccion: e.target.value }))} required />
+          <Input label="Comuna" placeholder="Ej: Frutillar" value={newEeData.comuna} onChange={e => setNewEeData(p => ({ ...p, comuna: e.target.value }))} />
+          <Input label="Propietario / representante" value={newEeData.nombre_propietario} onChange={e => setNewEeData(p => ({ ...p, nombre_propietario: e.target.value }))} required />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" loading={creating}>Crear establecimiento</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal: confirmar eliminación */}
+      <Modal open={!!deleteTarget} onClose={() => { setDeleteTarget(null); setDeleteError(null); }} title="Eliminar establecimiento" maxWidth="480px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
-          <div style={{
-            background: 'oklch(75% 0.1 20 / 0.1)',
-            border: '1px solid oklch(60% 0.18 15 / 0.3)',
-            borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-4)',
-          }}>
+          <div style={{ background: 'oklch(75% 0.1 20 / 0.1)', border: '1px solid oklch(60% 0.18 15 / 0.3)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)' }}>
             <p style={{ margin: '0 0 var(--space-2) 0', fontWeight: 700, color: 'var(--color-rojo)', fontFamily: 'Satoshi, sans-serif' }}>
               ⚠️ Acción en cadena — sin posibilidad de recuperar
             </p>
@@ -461,27 +317,14 @@ export default function EstablecimientosPage() {
               Los registros históricos (certificaciones, documentos) se conservan en la base de datos.
             </p>
           </div>
-
           {deleteError && (
             <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)', background: 'oklch(75% 0.1 20 / 0.08)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)' }}>
               ⚠️ {deleteError}
             </div>
           )}
-
           <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
-            <Button
-              variant="secondary"
-              onClick={() => { setDeleteTarget(null); setDeleteError(null); }}
-              disabled={deleting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              id="confirm-delete-establecimiento"
-              onClick={handleDeleteConfirm}
-              loading={deleting}
-              style={{ background: 'var(--color-rojo)', borderColor: 'var(--color-rojo)' }}
-            >
+            <Button variant="secondary" onClick={() => { setDeleteTarget(null); setDeleteError(null); }} disabled={deleting}>Cancelar</Button>
+            <Button id="confirm-delete-establecimiento" onClick={handleDeleteConfirm} loading={deleting} style={{ background: 'var(--color-rojo)', borderColor: 'var(--color-rojo)' }}>
               Sí, eliminar
             </Button>
           </div>

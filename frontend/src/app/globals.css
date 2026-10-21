@@ -1199,3 +1199,160 @@ tbody td {
   background: var(--color-primary-muted);
   outline: 1px solid var(--color-primary);
 }
+
+/* ── Ficha única de establecimiento ─────────────────────────── */
+.hub-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 2.2fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .hub-grid { grid-template-columns: 1fr; }
+}
+
+.etapas {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.etapa {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  min-height: 44px;
+}
+.etapa-num {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  font-size: 11px;
+}
+.etapa.hecha { color: var(--color-primary); }
+.etapa.hecha .etapa-num { background: var(--color-primary); color: #fff; }
+.etapa.actual {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+.etapa.actual .etapa-num { background: var(--color-primary); color: #fff; }
+.etapa.actual.tono-rojo { border-color: var(--color-rojo); background: var(--color-rojo-bg); }
+.etapa.actual.tono-rojo .etapa-num { background: var(--color-rojo); }
+.etapa.actual.tono-amarillo { border-color: var(--color-amarillo); background: var(--color-amarillo-bg); }
+.etapa.actual.tono-amarillo .etapa-num { background: var(--color-amarillo); }
+
+.banner-paso {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.banner-paso.urgente  { border-left-color: var(--color-rojo);     background: var(--color-rojo-bg); }
+.banner-paso.atencion { border-left-color: var(--color-amarillo); background: var(--color-amarillo-bg); }
+.banner-paso.ok       { border-left-color: var(--color-verde);    background: var(--color-verde-bg); }
+
+/* ── Tablero: etapas de la cartera ──────────────────────────── */
+.cartera-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--tile-color, var(--color-border-strong));
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-height: 72px;
+  transition: box-shadow var(--transition-interactive), transform var(--transition-interactive);
+}
+.cartera-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.cartera-tile[aria-pressed="true"] {
+  outline: 2px solid var(--tile-color, var(--color-primary));
+  background: var(--color-surface-2);
+}
+.cartera-tile-num {
+  font-family: 'Satoshi', sans-serif;
+  font-weight: 900;
+  font-size: var(--text-xl);
+  line-height: 1;
+  color: var(--tile-color, var(--color-text));
+}
+.cartera-tile-label { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* ── Acciones de fila (tres puntos que se despliegan hacia el costado) ── */
+.acciones-fila {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.acciones-fila-items {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+  transition:
+    max-width 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms ease,
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.acciones-fila.abierto .acciones-fila-items {
+  max-width: 108px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.acciones-icono {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-interactive), color var(--transition-interactive), border-color var(--transition-interactive);
+}
+.acciones-icono:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.acciones-icono.peligro:hover {
+  background: var(--color-rojo-bg);
+  color: var(--color-rojo);
+}
+.acciones-icono:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .acciones-fila-items { transition: none; }
+}

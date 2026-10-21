@@ -15,6 +15,10 @@ export class UpdateCertificacionDto {
   instalacion_id?: number;
 
   @IsOptional()
+  @IsNumber()
+  certificador_id?: number;
+
+  @IsOptional()
   @IsEnum(TipoSello)
   tipo_sello?: TipoSello;
 

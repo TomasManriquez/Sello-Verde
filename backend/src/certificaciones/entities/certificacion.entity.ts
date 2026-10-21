@@ -14,6 +14,7 @@ import { Local } from '../../establecimientos/entities/local.entity';
 import { Instalacion } from '../../instalaciones/entities/instalacion.entity';
 import { Defecto } from './defecto.entity';
 import { Alerta } from '../../alertas/entities/alerta.entity';
+import { Certificador } from '../../certificadores/entities/certificador.entity';
 
 @Entity('certificaciones')
 export class Certificacion {
@@ -50,6 +51,15 @@ export class Certificacion {
   })
   tipo_sello: TipoSello;
 
+  /** Certificador que validó la instalación (fuente de verdad). Los campos de texto de abajo son el dato anterior. */
+  @Column({ nullable: true })
+  certificador_id: number;
+
+  @ManyToOne(() => Certificador, (c) => c.certificaciones, { nullable: true })
+  @JoinColumn({ name: 'certificador_id' })
+  certificador: Certificador;
+
+  /** @deprecated Dato anterior a la entidad Certificador */
   @Column({ nullable: true })
   nombre_inspector: string;
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
 import { Certificacion } from './entities/certificacion.entity';
@@ -18,6 +18,7 @@ import {
   PLAZO_REGULARIZACION_DIAS,
   VIGENCIA_VERDE_DIAS,
 } from '../common/sellos.util';
+import { CertificadoresService } from '../certificadores/certificadores.service';
 
 @Injectable()
 export class CertificacionesService {
@@ -32,6 +33,8 @@ export class CertificacionesService {
     private establecimientoRepository: Repository<Establecimiento>,
     @InjectRepository(Alerta)
     private alertaRepository: Repository<Alerta>,
+    @Inject(forwardRef(() => CertificadoresService))
+    private certificadoresService: CertificadoresService,
   ) {}
 
   async findByExpediente(expedienteId: number) {
@@ -44,7 +47,7 @@ export class CertificacionesService {
 
     const items = await this.certRepository.find({
       where: { expediente_id: expedienteId },
-      relations: ['defectos', 'local', 'instalacion', 'alertas'],
+      relations: ['defectos', 'local', 'instalacion', 'alertas', 'certificador'],
       order: { created_at: 'DESC' },
     });
 
@@ -80,6 +83,9 @@ export class CertificacionesService {
     }
     const localId = dueno.id;
     const localInfo = ` — Local N° ${dueno.numero_local}`;
+
+    // El certificador debe existir (entidad Certificador)
+    await this.certificadoresService.findOneOrFail(dto.certificador_id);
 
     // Validación: sello amarillo/rojo requiere al menos un defecto
     if (
@@ -170,7 +176,7 @@ export class CertificacionesService {
 
     const result = await this.certRepository.findOne({
       where: { id: saved.id },
-      relations: ['defectos', 'local', 'instalacion', 'alertas'],
+      relations: ['defectos', 'local', 'instalacion', 'alertas', 'certificador'],
     });
 
     return {
@@ -189,6 +195,10 @@ export class CertificacionesService {
     }
 
     const { defectos: defectosDto, ...certData } = dto;
+
+    if (dto.certificador_id) {
+      await this.certificadoresService.findOneOrFail(dto.certificador_id);
+    }
 
     // Actualizar campos principales
     Object.assign(cert, certData);
@@ -255,7 +265,7 @@ export class CertificacionesService {
 
     const result = await this.certRepository.findOne({
       where: { id },
-      relations: ['defectos', 'local', 'instalacion', 'alertas'],
+      relations: ['defectos', 'local', 'instalacion', 'alertas', 'certificador'],
     });
 
     return {
@@ -296,6 +306,12 @@ export class CertificacionesService {
         estado_general: estado,
       });
     }
+  }
+
+  /** Usado por la fusión de certificadores: traspasa las inspecciones de uno a otro. */
+  async reasignarCertificador(origenId: number, destinoId: number): Promise<number> {
+    const res = await this.certRepository.update({ certificador_id: origenId }, { certificador_id: destinoId });
+    return res.affected ?? 0;
   }
 
   // Defectos

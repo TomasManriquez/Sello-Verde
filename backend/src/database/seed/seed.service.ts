@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ILike, IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Usuario } from '../../auth/entities/usuario.entity';
 import { Establecimiento } from '../../establecimientos/entities/establecimiento.entity';
@@ -10,6 +10,9 @@ import { Expediente } from '../../expedientes/entities/expediente.entity';
 import { Certificacion } from '../../certificaciones/entities/certificacion.entity';
 import { Defecto } from '../../certificaciones/entities/defecto.entity';
 import { Alerta } from '../../alertas/entities/alerta.entity';
+import { Empresa } from '../../empresas/entities/empresa.entity';
+import { Certificador } from '../../certificadores/entities/certificador.entity';
+import { formatearRut, tieneFormatoRut } from '../../common/rut.util';
 import {
   EstadoGeneral,
   EstadoTC6,
@@ -43,12 +46,19 @@ export class SeedService implements OnApplicationBootstrap {
     private defectoRepo: Repository<Defecto>,
     @InjectRepository(Alerta)
     private alertaRepo: Repository<Alerta>,
+    @InjectRepository(Empresa)
+    private empresaRepo: Repository<Empresa>,
+    @InjectRepository(Certificador)
+    private certificadorRepo: Repository<Certificador>,
   ) { }
 
   async onApplicationBootstrap() {
-
     await this.normalizarEstadosLegados();
+    await this.sembrarSiCorresponde();
+    await this.migrarEmpresasYCertificadores();
+  }
 
+  private async sembrarSiCorresponde() {
     if (process.env.NODE_ENV !== 'development') {
       await this.initialSetup();
       this.logger.log('Skipping database seeding in non-development environment.');
@@ -66,6 +76,97 @@ export class SeedService implements OnApplicationBootstrap {
     await this.seed();
     this.logger.log('✅ Database seeded successfully!');
   }
+  /**
+   * Rescata los datos de texto anteriores: crea las empresas y los certificadores a partir de lo
+   * escrito en expedientes e inspecciones y los enlaza. Es idempotente (solo procesa filas sin enlazar).
+   * Agrupa por RUT; si no hay RUT, por nombre. Lo que no se puede unir solo (el mismo nombre con RUT
+   * distintos, por ejemplo) queda separado y se fusiona desde "Empresas y certificadores".
+   */
+  private async migrarEmpresasYCertificadores() {
+    // Un RUT válido se normaliza a "12.345.678-9"; si no lo es se conserva tal cual para poder corregirlo
+    const rutDe = (raw?: string | null) => {
+      const t = (raw ?? '').trim();
+      if (!t) return null;
+      return tieneFormatoRut(t) ? formatearRut(t) : t;
+    };
+    const comoPatron = (texto: string) => ILike(texto.replace(/[%_\\]/g, '\\$&'));
+
+    // ── Empresas (expedientes) ──
+    const expedientes = await this.expedienteRepo.find({ where: { empresa_id: IsNull() } });
+    const empresas = new Map<string, Empresa>();
+    let empresasNuevas = 0;
+    let expedientesEnlazados = 0;
+    for (const exp of expedientes) {
+      const nombre = (exp.empresa_instaladora ?? '').trim();
+      const rut = rutDe(exp.rut_empresa);
+      if (!nombre && !rut) continue;
+
+      const clave = rut ? `rut:${rut}` : `nombre:${nombre.toLowerCase()}`;
+      let empresa = empresas.get(clave);
+      if (!empresa) {
+        empresa =
+          (rut
+            ? await this.empresaRepo.findOne({ where: { rut } })
+            : await this.empresaRepo.findOne({ where: { razon_social: comoPatron(nombre) } })) ?? undefined;
+        if (!empresa) {
+          empresa = await this.empresaRepo.save(
+            this.empresaRepo.create({
+              rut: rut ?? undefined,
+              razon_social: nombre || `Empresa RUT ${rut}`,
+              contacto: exp.contacto_empresa || undefined,
+              telefono: exp.telefono_empresa || undefined,
+              email: exp.email_empresa || undefined,
+            }),
+          );
+          empresasNuevas++;
+        }
+        empresas.set(clave, empresa);
+      }
+      await this.expedienteRepo.update(exp.id, { empresa_id: empresa.id });
+      expedientesEnlazados++;
+    }
+
+    // ── Certificadores (inspecciones) ──
+    const certificaciones = await this.certificacionRepo.find({ where: { certificador_id: IsNull() } });
+    const certificadores = new Map<string, Certificador>();
+    let certificadoresNuevos = 0;
+    let inspeccionesEnlazadas = 0;
+    for (const cert of certificaciones) {
+      const nombre = (cert.nombre_inspector ?? '').trim();
+      const rut = rutDe(cert.rut_inspector);
+      if (!nombre && !rut) continue;
+
+      const clave = rut ? `rut:${rut}` : `nombre:${nombre.toLowerCase()}`;
+      let certificador = certificadores.get(clave);
+      if (!certificador) {
+        certificador =
+          (rut
+            ? await this.certificadorRepo.findOne({ where: { rut } })
+            : await this.certificadorRepo.findOne({ where: { nombre: comoPatron(nombre), rut: IsNull() } })) ?? undefined;
+        if (!certificador) {
+          certificador = await this.certificadorRepo.save(
+            this.certificadorRepo.create({
+              rut: rut ?? undefined,
+              nombre: nombre || `Certificador RUT ${rut}`,
+              entidad: (cert.entidad_certificadora ?? '').trim() || undefined,
+            }),
+          );
+          certificadoresNuevos++;
+        }
+        certificadores.set(clave, certificador);
+      }
+      await this.certificacionRepo.update(cert.id, { certificador_id: certificador.id });
+      inspeccionesEnlazadas++;
+    }
+
+    if (expedientesEnlazados > 0 || inspeccionesEnlazadas > 0) {
+      this.logger.log(
+        `Rescate de datos: ${empresasNuevas} empresa(s) y ${certificadoresNuevos} certificador(es) creados; ` +
+          `${expedientesEnlazados} expediente(s) y ${inspeccionesEnlazadas} inspección(es) enlazados`,
+      );
+    }
+  }
+
   /**
    * `en_certificacion` se reemplazó por `en_regularizacion` (TC6 aprobado ⇒ obras / regularización).
    * Migra filas existentes; es idempotente (no hace nada si ya no quedan filas legadas).

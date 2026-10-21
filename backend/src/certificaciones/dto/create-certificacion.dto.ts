@@ -14,6 +14,10 @@ export class CreateCertificacionDto {
   @IsNumber({}, { message: 'Debes seleccionar la instalación que se inspeccionó' })
   instalacion_id: number;
 
+  /** Certificador (entidad Certificador) que validó la instalación */
+  @IsNumber({}, { message: 'Debes seleccionar el certificador que validó la instalación' })
+  certificador_id: number;
+
   @IsOptional()
   @IsEnum(TipoSello)
   tipo_sello?: TipoSello;

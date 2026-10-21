@@ -9,6 +9,8 @@ import { Expediente } from '../../expedientes/entities/expediente.entity';
 import { Certificacion } from '../../certificaciones/entities/certificacion.entity';
 import { Defecto } from '../../certificaciones/entities/defecto.entity';
 import { Alerta } from '../../alertas/entities/alerta.entity';
+import { Empresa } from '../../empresas/entities/empresa.entity';
+import { Certificador } from '../../certificadores/entities/certificador.entity';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { Alerta } from '../../alertas/entities/alerta.entity';
       Certificacion,
       Defecto,
       Alerta,
+      Empresa,
+      Certificador,
     ]),
   ],
   providers: [SeedService],

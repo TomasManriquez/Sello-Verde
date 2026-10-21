@@ -14,6 +14,11 @@ export class CreateExpedienteDto {
   @IsNumber()
   establecimiento_id: number;
 
+  /** Empresa contratista (entidad Empresa) */
+  @IsOptional()
+  @IsNumber()
+  empresa_id?: number;
+
   @IsOptional()
   @IsString()
   empresa_instaladora?: string;

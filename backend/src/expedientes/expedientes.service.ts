@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -12,6 +14,7 @@ import { Alerta } from '../alertas/entities/alerta.entity';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
 import { EstadoTC6, EstadoGeneral, ESTADOS_ALERTA_PENDIENTES } from '../common/enums';
 import { calcularSellos, derivarEstadoGeneral } from '../common/sellos.util';
+import { EmpresasService } from '../empresas/empresas.service';
 
 // TC6 forward transition rules
 const TC6_TRANSITIONS: Record<EstadoTC6, EstadoTC6[]> = {
@@ -42,6 +45,8 @@ export class ExpedientesService {
     private establecimientoRepository: Repository<Establecimiento>,
     @InjectRepository(Alerta)
     private alertaRepository: Repository<Alerta>,
+    @Inject(forwardRef(() => EmpresasService))
+    private empresasService: EmpresasService,
   ) {}
 
   async findAll() {
@@ -51,6 +56,7 @@ export class ExpedientesService {
         'establecimiento.locales',
         'establecimiento.locales.instalaciones',
         'certificaciones',
+        'empresa',
       ],
       order: { created_at: 'DESC' },
     });
@@ -87,6 +93,8 @@ export class ExpedientesService {
         'certificaciones.local',
         'certificaciones.instalacion',
         'certificaciones.alertas',
+        'certificaciones.certificador',
+        'empresa',
         'documentos',
         'hitos',
       ],
@@ -161,6 +169,10 @@ export class ExpedientesService {
       );
     }
 
+    if (dto.empresa_id) {
+      await this.empresasService.findOneOrFail(dto.empresa_id);
+    }
+
     const item = this.expedienteRepository.create(dto);
     const saved = await this.expedienteRepository.save(item);
 
@@ -189,6 +201,10 @@ export class ExpedientesService {
     });
     if (!item) {
       throw new NotFoundException(`Expediente #${id} no encontrado`);
+    }
+
+    if (dto.empresa_id) {
+      await this.empresasService.findOneOrFail(dto.empresa_id);
     }
 
     Object.assign(item, dto);
@@ -324,6 +340,49 @@ export class ExpedientesService {
 
     await this.alertaRepository.softDelete ({ expediente_id: In(ids)},);
     await this.expedienteRepository.softDelete(ids);
+  }
+
+  /** Usado por la fusión de empresas: traspasa los expedientes de una empresa a otra. */
+  async reasignarEmpresa(origenId: number, destinoId: number): Promise<number> {
+    const res = await this.expedienteRepository.update({ empresa_id: origenId }, { empresa_id: destinoId });
+    return res.affected ?? 0;
+  }
+
+  /**
+   * Asigna una empresa a varios establecimientos. Si un establecimiento no tiene gestión iniciada,
+   * se crea su expediente con esa empresa; si ya la tiene, se cambia la empresa.
+   */
+  async asignarEmpresaEnBloque(establecimientoIds: number[], empresaId: number) {
+    const empresa = await this.empresasService.findOneOrFail(empresaId);
+
+    let actualizados = 0;
+    let creados = 0;
+    const omitidos: number[] = [];
+
+    for (const establecimientoId of establecimientoIds) {
+      const existente = await this.expedienteRepository.findOne({
+        where: { establecimiento_id: establecimientoId },
+      });
+      if (existente) {
+        if (existente.empresa_id !== empresa.id) {
+          await this.expedienteRepository.update(existente.id, { empresa_id: empresa.id });
+          actualizados++;
+        }
+        continue;
+      }
+      try {
+        await this.create({ establecimiento_id: establecimientoId, empresa_id: empresa.id });
+        creados++;
+      } catch (err) {
+        if (err instanceof NotFoundException) omitidos.push(establecimientoId);
+        else throw err;
+      }
+    }
+
+    return {
+      data: { actualizados, creados, omitidos },
+      message: `${empresa.razon_social}: ${creados} gestión(es) iniciada(s), ${actualizados} actualizada(s)`,
+    };
   }
 
   async remove(id: number) {

@@ -310,7 +310,7 @@ export default function EstablecimientosPage() {
             </p>
             <ul style={{ margin: 'var(--space-2) 0 0 var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.8 }}>
               <li>Eliminar lógicamente todos sus <strong>expedientes</strong> asociados</li>
-              <li>Eliminar lógicamente todas sus <strong>alertas</strong> activas</li>
+              <li>Quitar sus instalaciones de los <strong>vencimientos</strong></li>
               <li>Retirar el establecimiento del listado activo</li>
             </ul>
             <p style={{ margin: 'var(--space-3) 0 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>

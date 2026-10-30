@@ -13,7 +13,7 @@ import { RegistrarInspeccionModal } from '@/components/dashboard/RegistrarInspec
 const sectionTitle: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)', margin: 0 };
 
 export default function DashboardPage() {
-  const { stats, alertas, loading: statsLoading, error: statsError } = useDashboard();
+  const { stats, vencimientos, loading: statsLoading, error: statsError } = useDashboard();
   const [establecimientos, setEstablecimientos] = useState<Establecimiento[]>([]);
   const [eeLoading, setEeLoading] = useState(true);
   const [eeError, setEeError] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export default function DashboardPage() {
       )}
 
       {/* 1. Qué requiere atención hoy */}
-      <RequiereAccion alertas={alertas} loading={statsLoading} />
+      <RequiereAccion vencimientos={vencimientos} loading={statsLoading} />
 
       {/* 2. Cómo está la cartera */}
       <EtapasCartera stats={stats} loading={statsLoading} selected={etapa} onSelect={setEtapa} />

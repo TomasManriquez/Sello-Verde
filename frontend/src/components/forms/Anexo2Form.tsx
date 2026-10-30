@@ -387,7 +387,7 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
               Se eliminará el <strong>Local {localAEliminar.numero_local}{localAEliminar.nombre ? ` — ${localAEliminar.nombre}` : ''}</strong>
               {(localAEliminar.instalaciones?.length ?? 0) > 0
-                ? <> junto con sus <strong>{localAEliminar.instalaciones!.length} instalación(es)</strong> y sus alertas.</>
+                ? <> junto con sus <strong>{localAEliminar.instalaciones!.length} instalación(es)</strong>.</>
                 : '.'}
               {' '}Las inspecciones ya registradas se conservan en el historial.
             </p>

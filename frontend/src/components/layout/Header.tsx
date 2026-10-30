@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 const BREADCRUMB_MAP: Record<string, string> = {
   '/dashboard':       'Tablero',
   '/establecimientos':'Establecimientos',
-  '/alertas':         'Alertas',
+  '/vencimientos':    'Vencimientos',
   '/empresas':        'Empresas y certificadores',
   '/login':           'Iniciar Sesión',
 };

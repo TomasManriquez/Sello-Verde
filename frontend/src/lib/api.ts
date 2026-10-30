@@ -362,22 +362,11 @@ export const certificadoresApi = {
   },
 };
 
-// ── Alertas ──────────────────────────────────────────────────
-export const alertasApi = {
-  list(params?: { tipo?: string; estado?: string }) {
-    const qs = params ? '?' + new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v != null) as [string, string][]
-    ).toString() : '';
-    return api.get<Alerta[]>(`/alertas${qs}`);
-  },
-  listForExpediente(expedienteId: number | string) {
-    return api.get<Alerta[]>(`/alertas?expediente_id=${expedienteId}`);
-  },
-  marcarResuelta(id: number | string) {
-    return api.patch<Alerta>(`/alertas/${id}`, { estado: 'resuelta' });
-  },
-  remove(id: number | string) {
-    return api.delete(`/alertas/${id}`);
+// ── Vencimientos (derivados del sello de cada instalación) ───
+export const vencimientosApi = {
+  /** Por defecto solo los que piden atención; `incluirAlDia` agrega los sellos verdes con más de 90 días. */
+  list(incluirAlDia = false) {
+    return api.get<VencimientosResponse>(`/vencimientos${incluirAlDia ? '?incluir_al_dia=true' : ''}`);
   },
 };
 
@@ -385,9 +374,6 @@ export const alertasApi = {
 export const dashboardApi = {
   getStats() {
     return api.get<DashboardStats>('/dashboard/resumen');
-  },
-  getProximasAlertas() {
-    return api.get<Alerta[]>('/dashboard/alertas-proximas');
   },
 };
 
@@ -436,7 +422,6 @@ export interface SelloInstalacion {
   fecha_limite: string | null;
   dias_restantes: number | null;
   plazo_vencido: boolean;
-  alerta_id: number | null;
 }
 
 export interface ResumenSellos {
@@ -516,14 +501,11 @@ export interface Expediente {
   estado_tc6: string;
   monto_estimado?: number;
   observaciones?: string;
-  alertas?: Alerta[];
   certificaciones?: Certificacion[];
   documentos?: Documento[];
   /** Sello vigente por instalación (solo en GET /expedientes/:id) */
   sellos_instalaciones?: SelloInstalacion[];
   ultima_accion?: string;
-  /** Alertas pendientes (no resueltas); solo viene en el listado de expedientes */
-  alertas_activas?: number;
   created_at: string;
   updated_at: string;
 }
@@ -546,7 +528,6 @@ export interface Certificacion {
   numero_certificado?: string;
   observaciones?: string;
   defectos?: Defecto[];
-  alertas?: Alerta[];
   created_at: string;
 }
 
@@ -573,22 +554,48 @@ export interface Documento {
   updated_at: string;
 }
 
-export interface Alerta {
-  id: number;
+export type UrgenciaVencimiento = 'fuera_de_plazo' | 'proximo_30d' | 'proximo_90d' | 'al_dia';
+
+export type MotivoVencimiento =
+  | 'verde_vigente'
+  | 'verde_por_vencer'
+  | 'verde_vencido'
+  | 'regularizacion'
+  | 'plazo_vencido';
+
+/** Plazo que corre para una instalación, derivado de su sello vigente (no se guarda ni se resuelve a mano). */
+export interface Vencimiento {
+  instalacion_id: number;
+  local_id: number;
+  numero_local: number;
+  zona_abastecimiento: string | null;
+  referencia: string | null;
+  abastecimiento: string | null;
+  establecimiento_id: number;
+  establecimiento_nombre: string;
   expediente_id: number;
-  certificacion_id?: number;
-  instalacion_id?: number;
-  instalacion?: Instalacion & { local?: Local };
-  expediente?: Expediente & { establecimiento?: Establecimiento };
-  // Tipo de alerta: campo real del backend
-  tipo: string;
-  /** Alias legacy para componentes que usen tipo_alerta */
-  tipo_alerta?: string;
-  estado: string;
-  fecha_vencimiento: string;
-  dias_restantes?: number | null;
-  mensaje?: string;
-  created_at: string;
+  tipo_sello: 'verde' | 'amarillo' | 'rojo' | null;
+  estado_sello: EstadoSello;
+  fecha_inspeccion: string | null;
+  fecha_limite: string;
+  /** Negativo cuando ya venció */
+  dias_restantes: number;
+  urgencia: UrgenciaVencimiento;
+  motivo: MotivoVencimiento;
+}
+
+export interface ResumenVencimientos {
+  fuera_de_plazo: number;
+  proximos_30d: number;
+  proximos_90d: number;
+  al_dia: number;
+  /** Fuera de plazo + próximos 30 días */
+  requieren_accion: number;
+}
+
+export interface VencimientosResponse {
+  items: Vencimiento[];
+  resumen: ResumenVencimientos;
 }
 
 export interface DashboardStats {
@@ -601,6 +608,5 @@ export interface DashboardStats {
   sello_verde: number;
   sello_amarillo: number;
   sello_rojo: number;
-  alertas_activas: number;
-  alertas_proximas_30d: number;
+  vencimientos: ResumenVencimientos;
 }

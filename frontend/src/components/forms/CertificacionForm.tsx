@@ -149,7 +149,7 @@ export function CertificacionForm({ expedienteId, establecimientoId, instalacion
       tipo:  'verde',
       emoji: '🟢',
       label: 'Sello Verde',
-      desc:  'Sin defectos. Instalación aprobada. Alerta de vencimiento en 2 años.',
+      desc:  'Sin defectos. Instalación aprobada. Vigente por 2 años.',
     },
     {
       tipo:  'amarillo',
@@ -372,8 +372,8 @@ export function CertificacionForm({ expedienteId, establecimientoId, instalacion
           </h3>
           <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-6)' }}>
             {sello === 'verde'
-              ? 'Se ha generado una alerta de vencimiento automática para 2 años.'
-              : 'Se ha iniciado el plazo normativo de 90 días para la regularización. Las alertas previas de esta instalación han sido desactivadas.'}
+              ? 'El Sello Verde de esta instalación vale por 2 años; el vencimiento aparecerá en Vencimientos 90 días antes.'
+              : 'Se inició el plazo normativo de 90 días para regularizar esta instalación. El vencimiento anterior queda reemplazado.'}
           </p>
           <Button variant="primary" onClick={() => { setShowSuccess(false); onComplete?.(); }}>
             Volver al Expediente

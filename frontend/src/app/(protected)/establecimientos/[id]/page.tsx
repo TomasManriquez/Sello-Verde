@@ -278,7 +278,7 @@ export default function EstablecimientoDetailPage() {
           {exp && (
             <>
               <DocumentosPanel expedienteId={exp.id} documentos={exp.documentos ?? []} />
-              <HistorialPanel certificaciones={exp.certificaciones ?? []} alertas={exp.alertas ?? []} onChanged={load} />
+              <HistorialPanel certificaciones={exp.certificaciones ?? []} onChanged={load} />
             </>
           )}
         </div>
@@ -359,7 +359,7 @@ export default function EstablecimientoDetailPage() {
                   </p>
                 )}
                 <ul style={{ margin: 'var(--space-2) 0 0 var(--space-4)', color: 'var(--color-text-muted)' }}>
-                  <li>Sus alertas pendientes se eliminan.</li>
+                  <li>Dejan de contar en los vencimientos.</li>
                   <li>
                     Las inspecciones ya registradas se conservan en el historial
                     {inspeccionadas > 0 ? `, pero ${inspeccionadas === 1 ? 'la instalación inspeccionada dejará' : `las ${inspeccionadas} instalaciones inspeccionadas dejarán`} de contar para el sello del establecimiento` : ''}.

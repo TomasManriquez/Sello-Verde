@@ -1,31 +1,26 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Pencil, Trash } from 'lucide-react';
-import { alertasApi, certificacionesApi, Alerta, Certificacion, UpdateCertificacionPayload } from '@/lib/api';
+import { Pencil } from 'lucide-react';
+import { certificacionesApi, Certificacion, UpdateCertificacionPayload } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { CertificadorPicker } from '@/components/registro/CertificadorPicker';
-import { ALERTA_TIPOS, diasRestantesAlerta, formatDate, instalacionLabel } from '@/lib/constants';
+import { formatDate, instalacionLabel } from '@/lib/constants';
 
 interface Props {
   certificaciones: Certificacion[];
-  alertas: Alerta[];
   onChanged: () => void;
 }
 
-/** Historial del expediente: inspecciones realizadas y registro de alertas (vigentes y resueltas). */
-export function HistorialPanel({ certificaciones, alertas, onChanged }: Props) {
+/** Historial del expediente: inspecciones realizadas. Los plazos no se registran aquí: se derivan del sello de cada instalación. */
+export function HistorialPanel({ certificaciones, onChanged }: Props) {
   const [editCert, setEditCert] = useState<Certificacion | null>(null);
   const [form, setForm] = useState<UpdateCertificacionPayload>({});
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-
-  const [alertaError, setAlertaError] = useState<string | null>(null);
-  const [alertaBusy, setAlertaBusy] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Alerta | null>(null);
 
   const abrirEdicion = (c: Certificacion) => {
     setEditCert(c);
@@ -52,34 +47,6 @@ export function HistorialPanel({ certificaciones, alertas, onChanged }: Props) {
       setEditError(err.message || 'Error al guardar');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const resolver = async (a: Alerta) => {
-    setAlertaBusy(a.id);
-    setAlertaError(null);
-    try {
-      await alertasApi.marcarResuelta(a.id);
-      onChanged();
-    } catch (err: any) {
-      setAlertaError(err.message || 'Error al resolver la alerta');
-    } finally {
-      setAlertaBusy(null);
-    }
-  };
-
-  const eliminar = async () => {
-    if (!deleteTarget) return;
-    setAlertaBusy(deleteTarget.id);
-    setAlertaError(null);
-    try {
-      await alertasApi.remove(deleteTarget.id);
-      setDeleteTarget(null);
-      onChanged();
-    } catch (err: any) {
-      setAlertaError(err.message || 'Error al eliminar la alerta');
-    } finally {
-      setAlertaBusy(null);
     }
   };
 
@@ -128,56 +95,6 @@ export function HistorialPanel({ certificaciones, alertas, onChanged }: Props) {
         )}
       </div>
 
-      {/* Alertas */}
-      <div>
-        <h2 style={{ ...titulo, borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-          Registro de alertas ({alertas.length})
-        </h2>
-        {alertaError && <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)', marginBottom: 'var(--space-2)' }}>⚠️ {alertaError}</div>}
-        {alertas.length === 0 ? (
-          <p style={{ ...sub, margin: 0 }}>Este establecimiento no tiene alertas.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {alertas.map((a) => {
-              const dias = diasRestantesAlerta(a);
-              const resuelta = a.estado === 'resuelta';
-              const donde = instalacionLabel(a.instalacion);
-              return (
-                <div key={a.id} style={{ ...fila, opacity: resuelta ? 0.65 : 1 }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                      {ALERTA_TIPOS[a.tipo as keyof typeof ALERTA_TIPOS] ?? a.tipo}
-                    </div>
-                    {donde && <div style={{ fontSize: 'var(--text-xs)' }}>{donde}</div>}
-                    <div style={sub}>
-                      Vence: {formatDate(a.fecha_vencimiento)}
-                      {!resuelta && (
-                        <span style={{ marginLeft: 'var(--space-2)', color: dias < 30 ? 'var(--color-rojo)' : 'inherit' }}>
-                          ({dias < 0 ? `vencida hace ${Math.abs(dias)} d` : `${dias} días restantes`})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <Badge estado={a.estado} />
-                    {!resuelta && (
-                      <Button variant="secondary" size="sm" loading={alertaBusy === a.id} onClick={() => resolver(a)} title="Solo si la instalación ya tiene un Sello Verde posterior">
-                        ✓ Resolver
-                      </Button>
-                    )}
-                    {resuelta && (
-                      <Button variant="ghost" size="sm" onClick={() => { setDeleteTarget(a); setAlertaError(null); }} aria-label="Eliminar alerta resuelta" style={{ color: 'var(--color-rojo)' }}>
-                        <Trash size={16} aria-hidden="true" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
       {/* Modal: editar inspección */}
       <Modal open={!!editCert} onClose={() => setEditCert(null)} title="Editar inspección" maxWidth="520px">
         {editCert && (
@@ -201,19 +118,6 @@ export function HistorialPanel({ certificaciones, alertas, onChanged }: Props) {
         )}
       </Modal>
 
-      {/* Modal: eliminar alerta resuelta */}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Eliminar alerta" maxWidth="420px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-            ¿Confirmas eliminar esta alerta resuelta? El registro se conserva en la base de datos (soft delete).
-          </p>
-          {alertaError && <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>⚠️ {alertaError}</div>}
-          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
-            <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={alertaBusy !== null}>Cancelar</Button>
-            <Button variant="danger" onClick={eliminar} loading={alertaBusy !== null}>Eliminar</Button>
-          </div>
-        </div>
-      </Modal>
     </section>
   );
 }

@@ -68,7 +68,7 @@ export function InstalacionesPanel({ ee, expedienteId, onAddLocal, onAddInstalac
             Instalaciones de gas
           </h2>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-            Cada instalación tiene su propio sello, plazo y alerta.
+            Cada instalación tiene su propio sello y plazo.
           </span>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>

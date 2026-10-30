@@ -114,25 +114,6 @@ export const DEFECTOS_ANEXO3 = [
 
 export type DefectoId = typeof DEFECTOS_ANEXO3[number]['id'];
 
-// ── Alerta Estado ────────────────────────────────────────────
-export const ALERTA_ESTADOS = {
-  activa:      'Activa',
-  notificada:  'Notificada',
-  vencida:     'Vencida',
-  resuelta:    'Resuelta',
-} as const;
-
-export type AlertaEstado = keyof typeof ALERTA_ESTADOS;
-
-// ── Alerta Tipo ──────────────────────────────────────────────
-// Claves = valores reales de TipoAlerta en el backend
-export const ALERTA_TIPOS = {
-  vencimiento_sello_verde:  'Sello Verde (vence a los 2 años)',
-  plazo_regularizacion_90d: 'Plazo de regularización (90 días)',
-} as const;
-
-export type AlertaTipo = keyof typeof ALERTA_TIPOS;
-
 // ── Badge color map ──────────────────────────────────────────
 export const ESTADO_BADGE_CLASS: Record<string, string> = {
   sin_gestion:   'badge-gris',
@@ -147,19 +128,9 @@ export const ESTADO_BADGE_CLASS: Record<string, string> = {
   verde:         'badge-verde',
   amarillo:      'badge-amarillo',
   rojo:          'badge-rojo',
-  activa:        'badge-rojo',
-  notificada:    'badge-amarillo',
-  vencida:       'badge-rojo',
-  resuelta:      'badge-verde',
 };
 
 // ── Urgency helpers ──────────────────────────────────────────
-export function getUrgencyClass(daysRemaining: number): string {
-  if (daysRemaining < 30)  return 'alert-chip-urgent';
-  if (daysRemaining < 90)  return 'alert-chip-warn';
-  return 'alert-chip-ok';
-}
-
 export function getUrgencyColor(daysRemaining: number): string {
   if (daysRemaining < 30)  return 'var(--color-rojo)';
   if (daysRemaining < 90)  return 'var(--color-amarillo)';
@@ -167,9 +138,18 @@ export function getUrgencyColor(daysRemaining: number): string {
 }
 
 // ── Date formatting ──────────────────────────────────────────
+/**
+ * Una fecha sin hora ('2026-10-23', columnas `date` de la API) es un día de calendario:
+ * `new Date('2026-10-23')` la toma como UTC y en Chile queda el día anterior.
+ */
+function aFechaLocal(dateStr: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(dateStr);
+}
+
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
+  const d = aFechaLocal(dateStr);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('es-CL', {
     day:   '2-digit',
@@ -180,20 +160,11 @@ export function formatDate(dateStr: string | null | undefined): string {
 
 export function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 9999;
-  const target = new Date(dateStr);
+  const target = aFechaLocal(dateStr);
   const now    = new Date();
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-/** Días restantes de una alerta: usa el valor del backend o lo calcula desde la fecha. */
-export function diasRestantesAlerta(a: { dias_restantes?: number | null; fecha_vencimiento: string }): number {
-  return typeof a.dias_restantes === 'number' ? a.dias_restantes : daysUntil(a.fecha_vencimiento);
-}
-
-/** Ficha del establecimiento al que pertenece la alerta. Sin establecimiento conocido, lleva al listado. */
-export function fichaHref(a: { expediente_id: number; expediente?: { establecimiento_id?: number; establecimiento?: { id: number } } | null }): string {
-  const eeId = a.expediente?.establecimiento_id ?? a.expediente?.establecimiento?.id;
-  return eeId ? `/establecimientos/${eeId}` : '/establecimientos';
+  // Comparar contra el inicio de hoy: así un día de calendario no depende de la hora actual
+  const hoy    = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 /** Texto corto que identifica una instalación: "Local 1 · Casino · Cilindros 45 kg". */

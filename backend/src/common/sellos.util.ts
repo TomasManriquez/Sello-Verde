@@ -1,7 +1,6 @@
 import type { Local } from '../establecimientos/entities/local.entity';
 import type { Certificacion } from '../certificaciones/entities/certificacion.entity';
-import type { Alerta } from '../alertas/entities/alerta.entity';
-import { EstadoAlerta, EstadoGeneral, EstadoTC6, TipoSello } from './enums';
+import { EstadoGeneral, EstadoTC6, TipoSello } from './enums';
 
 /**
  * Cálculo del estado de sello por instalación y del estado general derivado.
@@ -38,8 +37,6 @@ export interface SelloInstalacion {
   dias_restantes: number | null;
   /** Amarillo/rojo con el plazo de regularización ya cumplido */
   plazo_vencido: boolean;
-  /** Alerta pendiente (no resuelta) asociada a la instalación, si existe */
-  alerta_id: number | null;
 }
 
 export interface ResumenSellos {
@@ -107,12 +104,10 @@ function certificacionAplica(cert: Certificacion, localId: number, instalacionId
 export function calcularSellos(
   locales: Local[] | undefined,
   certificaciones: Certificacion[] | undefined,
-  alertas: Alerta[] | undefined = [],
   hoy: Date = new Date(),
 ): SelloInstalacion[] {
   const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
   const certs = certificaciones ?? [];
-  const pendientes = (alertas ?? []).filter((a) => a.estado !== EstadoAlerta.RESUELTA);
   const sellos: SelloInstalacion[] = [];
 
   for (const local of locales ?? []) {
@@ -124,19 +119,10 @@ export function calcularSellos(
         if (!vigente || esMasReciente(c, vigente)) vigente = c;
       }
 
-      const alerta = pendientes
-        .filter((a) => a.instalacion_id === inst.id)
-        .sort(
-          (a, b) =>
-            (aFecha(a.fecha_vencimiento)?.getTime() ?? 0) -
-            (aFecha(b.fecha_vencimiento)?.getTime() ?? 0),
-        )[0];
-
       const base = {
         instalacion_id: inst.id,
         local_id: local.id,
         numero_local: local.numero_local,
-        alerta_id: alerta?.id ?? null,
       };
 
       if (!vigente) {

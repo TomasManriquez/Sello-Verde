@@ -52,7 +52,7 @@ export const COLUMNAS_EXPORT: Columna[] = [
   { header: 'Entidad del certificador', key: 'entidad', width: 24 },
   { header: 'N° certificado', key: 'numero_certificado', width: 16 },
   { header: 'Defectos', key: 'defectos', width: 44 },
-  { header: 'Alertas pendientes', key: 'alertas_pendientes', width: 11 },
+  { header: 'Vencimiento', key: 'vencimiento', width: 18 },
 ];
 
 /** Construye el libro de una sola hoja con las filas ya preparadas. */

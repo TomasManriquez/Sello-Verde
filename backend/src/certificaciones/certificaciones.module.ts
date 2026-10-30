@@ -8,7 +8,6 @@ import { Expediente } from '../expedientes/entities/expediente.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Local } from '../establecimientos/entities/local.entity';
 import { Instalacion } from '../instalaciones/entities/instalacion.entity';
-import { Alerta } from '../alertas/entities/alerta.entity';
 import { CertificadoresModule } from '../certificadores/certificadores.module';
 
 @Module({
@@ -20,7 +19,6 @@ import { CertificadoresModule } from '../certificadores/certificadores.module';
       Establecimiento,
       Local,
       Instalacion,
-      Alerta,
     ]),
     forwardRef(() => CertificadoresModule),
   ],

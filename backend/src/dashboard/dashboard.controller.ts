@@ -11,9 +11,4 @@ export class DashboardController {
   getResumen() {
     return this.service.getResumen();
   }
-
-  @Get('alertas-proximas')
-  getAlertasProximas() {
-    return this.service.getAlertasProximas();
-  }
 }

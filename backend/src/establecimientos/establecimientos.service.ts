@@ -15,6 +15,14 @@ import {
   expedienteActivo,
   resumirSellos,
 } from '../common/sellos.util';
+import { clasificarSello, UrgenciaVencimiento } from '../common/vencimientos.util';
+
+const ETIQUETA_URGENCIA: Record<UrgenciaVencimiento, string> = {
+  fuera_de_plazo: 'Fuera de plazo',
+  proximo_30d: 'Próximos 30 días',
+  proximo_90d: 'Próximos 90 días',
+  al_dia: 'Al día',
+};
 
 const ETIQUETA_ESTADO: Record<string, string> = {
   sin_gestion: 'Sin gestión',
@@ -93,11 +101,7 @@ export class EstablecimientosService {
       );
     }
 
-    const sellos = calcularSellos(
-      est.locales,
-      expediente_activo?.certificaciones,
-      expediente_activo?.alertas,
-    );
+    const sellos = calcularSellos(est.locales, expediente_activo?.certificaciones);
     const estado_general = derivarEstadoGeneral({
       expediente: expediente_activo,
       sellos,
@@ -130,7 +134,6 @@ export class EstablecimientosService {
         'locales.instalaciones',
         'expedientes',
         'expedientes.certificaciones',
-        'expedientes.alertas',
       ],
       order: { nombre: 'ASC' },
     });
@@ -184,7 +187,6 @@ export class EstablecimientosService {
         'expedientes.certificaciones.defectos',
         'expedientes.certificaciones.certificador',
         'expedientes.empresa',
-        'expedientes.alertas',
       ],
       order: { nombre: 'ASC' },
     });
@@ -196,7 +198,6 @@ export class EstablecimientosService {
     for (const est of items) {
       const e = this.enriquecer(est);
       const exp = e.expediente_activo;
-      const pendientes = (exp?.alertas ?? []).filter((a) => a.estado !== 'resuelta');
 
       const base: FilaExport = {
         rbd: e.rbd,
@@ -262,7 +263,7 @@ export class EstablecimientosService {
                   .map((d) => ETIQUETA_DEFECTO[d.tipo_defecto] + (d.instalacion_afectada ? ` (${d.instalacion_afectada})` : ''))
                   .join('; ')
               : null,
-            alertas_pendientes: pendientes.filter((a) => a.instalacion_id === inst.id).length,
+            vencimiento: sello ? ETIQUETA_URGENCIA[clasificarSello(sello)?.urgencia ?? 'al_dia'] : null,
           });
         }
       }
@@ -274,7 +275,7 @@ export class EstablecimientosService {
   async findOne(id: number) {
     const item = await this.establecimientoRepository.findOne({
       where: { id },
-      relations: ['locales', 'locales.instalaciones', 'expedientes', 'expedientes.certificaciones', 'expedientes.alertas'],
+      relations: ['locales', 'locales.instalaciones', 'expedientes', 'expedientes.certificaciones'],
     });
 
     if (!item) {

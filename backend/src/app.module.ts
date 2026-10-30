@@ -10,6 +10,7 @@ import { ExpedientesModule } from './expedientes/expedientes.module';
 import { CertificacionesModule } from './certificaciones/certificaciones.module';
 import { AlertasModule } from './alertas/alertas.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { VencimientosModule } from './vencimientos/vencimientos.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { SeedModule } from './database/seed/seed.module';
 import { EmpresasModule } from './empresas/empresas.module';
@@ -74,6 +75,7 @@ import { Certificador } from './certificadores/entities/certificador.entity';
     CertificacionesModule,
     AlertasModule,
     DashboardModule,
+    VencimientosModule,
     DocumentosModule,
     EmpresasModule,
     CertificadoresModule,

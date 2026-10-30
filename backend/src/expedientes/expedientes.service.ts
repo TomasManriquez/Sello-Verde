@@ -12,7 +12,7 @@ import { HitoTC6 } from './entities/hito-tc6.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Alerta } from '../alertas/entities/alerta.entity';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
-import { EstadoTC6, EstadoGeneral, ESTADOS_ALERTA_PENDIENTES } from '../common/enums';
+import { EstadoTC6, EstadoGeneral } from '../common/enums';
 import { calcularSellos, derivarEstadoGeneral } from '../common/sellos.util';
 import { EmpresasService } from '../empresas/empresas.service';
 
@@ -61,24 +61,19 @@ export class ExpedientesService {
       order: { created_at: 'DESC' },
     });
 
-    const withAlerts = await Promise.all(
-      items.map(async (exp) => {
-        const alertasActivas = await this.alertaRepository.count({
-          where: { expediente_id: exp.id, estado: In(ESTADOS_ALERTA_PENDIENTES) },
-        });
-        // Estado derivado de las instalaciones (el campo guardado es solo un caché)
-        const sellos = calcularSellos(exp.establecimiento?.locales, exp.certificaciones);
-        const estado_general = derivarEstadoGeneral({
-          expediente: exp,
-          sellos,
-          certificaciones: exp.certificaciones,
-          locales: exp.establecimiento?.locales,
-        });
-        return { ...exp, estado_general, alertas_activas: alertasActivas };
-      }),
-    );
+    const conEstado = items.map((exp) => {
+      // Estado derivado de las instalaciones (el campo guardado es solo un caché)
+      const sellos = calcularSellos(exp.establecimiento?.locales, exp.certificaciones);
+      const estado_general = derivarEstadoGeneral({
+        expediente: exp,
+        sellos,
+        certificaciones: exp.certificaciones,
+        locales: exp.establecimiento?.locales,
+      });
+      return { ...exp, estado_general };
+    });
 
-    return { data: withAlerts, message: 'OK', total: withAlerts.length };
+    return { data: conEstado, message: 'OK', total: conEstado.length };
   }
 
   async findOne(id: number) {
@@ -92,7 +87,6 @@ export class ExpedientesService {
         'certificaciones.defectos',
         'certificaciones.local',
         'certificaciones.instalacion',
-        'certificaciones.alertas',
         'certificaciones.certificador',
         'empresa',
         'documentos',
@@ -105,21 +99,6 @@ export class ExpedientesService {
       throw new NotFoundException(`Expediente #${id} no encontrado`);
     }
 
-    const alertas = await this.alertaRepository.find({
-      where: { expediente_id: id },
-      relations: ['instalacion', 'instalacion.local'],
-      order: { fecha_vencimiento: 'ASC' },
-    });
-
-    // Calcular días restantes para cada alerta
-    const enrichedAlertas = alertas.map((alerta) => {
-      const today = new Date();
-      const expiry = new Date(alerta.fecha_vencimiento);
-      const diffTime = expiry.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return { ...alerta, dias_restantes: diffDays };
-    });
-
     // Normalise nested documents: add the relative URL so the frontend
     // can build the full absolute URL via API_HOST + doc.url
     const documentos = (item.documentos ?? []).map((doc) => {
@@ -129,7 +108,7 @@ export class ExpedientesService {
     });
 
     // Sello por instalación y estado general derivado (el peor sello manda)
-    const sellos = calcularSellos(item.establecimiento?.locales, item.certificaciones, alertas);
+    const sellos = calcularSellos(item.establecimiento?.locales, item.certificaciones);
     const estado_general = derivarEstadoGeneral({
       expediente: item,
       sellos,
@@ -142,7 +121,6 @@ export class ExpedientesService {
         ...item,
         estado_general,
         documentos,
-        alertas: enrichedAlertas,
         sellos_instalaciones: sellos,
       },
       message: 'OK',

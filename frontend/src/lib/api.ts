@@ -363,6 +363,22 @@ export const certificadoresApi = {
 };
 
 // ── Vencimientos (derivados del sello de cada instalación) ───
+// ── Catálogo de establecimientos del SLEP ────────────────────
+export interface EstablecimientoCatalogo {
+  rbd: string;
+  nombre: string;
+  comuna: string;
+  direccion: string;
+  region: string;
+}
+
+export const catalogoApi = {
+  /** Datos de referencia por RBD ("7976" o "7976-6"); 404 si no está en el listado. */
+  buscarEstablecimiento(rbd: string) {
+    return api.get<EstablecimientoCatalogo>(`/catalogo/establecimientos/${encodeURIComponent(rbd)}`);
+  },
+};
+
 export const vencimientosApi = {
   /** Por defecto solo los que piden atención; `incluirAlDia` agrega los sellos verdes con más de 90 días. */
   list(incluirAlDia = false) {

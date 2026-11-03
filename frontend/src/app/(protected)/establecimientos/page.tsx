@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { establecimientosApi, expedientesApi, Establecimiento } from '@/lib/api';
+import { catalogoApi, establecimientosApi, expedientesApi, Establecimiento } from '@/lib/api';
 import { EmpresaPicker } from '@/components/registro/EmpresaPicker';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -30,6 +30,7 @@ export default function EstablecimientosPage() {
   // Alta
   const [modalOpen, setModalOpen] = useState(false);
   const [newEeData, setNewEeData] = useState(NUEVO_VACIO);
+  const [rbdAviso, setRbdAviso] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -76,6 +77,19 @@ export default function EstablecimientosPage() {
     return () => clearTimeout(t);
   }, [search, estadoFilter]);
 
+  const autocompletarPorRbd = async () => {
+    const rbd = newEeData.rbd.trim();
+    if (!rbd) return;
+    try {
+      const c = await catalogoApi.buscarEstablecimiento(rbd);
+      // Solo completa lo que está vacío: no pisa lo que la persona ya escribió
+      setNewEeData(p => ({ ...p, nombre: p.nombre || c.nombre, direccion: p.direccion || c.direccion, comuna: p.comuna || c.comuna }));
+      setRbdAviso(`Datos completados desde el listado del SLEP: ${c.nombre}`);
+    } catch {
+      setRbdAviso('Este RBD no está en el listado del SLEP: completa los datos a mano.');
+    }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEeData.rbd.trim() || !newEeData.nombre.trim() || !newEeData.direccion.trim()) {
@@ -88,6 +102,7 @@ export default function EstablecimientosPage() {
       await establecimientosApi.create(newEeData);
       setModalOpen(false);
       setNewEeData(NUEVO_VACIO);
+      setRbdAviso(null);
       loadData();
     } catch (err: any) {
       setCreateError(err.message || 'Error al crear establecimiento');
@@ -286,7 +301,7 @@ export default function EstablecimientosPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo establecimiento">
         <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
           {createError && <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>⚠️ {createError}</div>}
-          <Input label="RBD del establecimiento" placeholder="Ej: 7976-6" value={newEeData.rbd} onChange={e => setNewEeData(p => ({ ...p, rbd: e.target.value }))} required />
+          <Input label="RBD del establecimiento" placeholder="Ej: 7976-6" value={newEeData.rbd} onChange={e => { setNewEeData(p => ({ ...p, rbd: e.target.value })); setRbdAviso(null); }} onBlur={autocompletarPorRbd} helpText={rbdAviso ?? 'Al salir del campo se completan nombre, dirección y comuna.'} required />
           <Input label="Nombre del establecimiento" placeholder="Ej: Escuela Bernardo Philippi" value={newEeData.nombre} onChange={e => setNewEeData(p => ({ ...p, nombre: e.target.value }))} required />
           <Input label="Dirección" placeholder="Ej: Avenida Philippi 563" value={newEeData.direccion} onChange={e => setNewEeData(p => ({ ...p, direccion: e.target.value }))} required />
           <Input label="Comuna" placeholder="Ej: Frutillar" value={newEeData.comuna} onChange={e => setNewEeData(p => ({ ...p, comuna: e.target.value }))} />

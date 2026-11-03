@@ -15,6 +15,7 @@ import { DocumentosModule } from './documentos/documentos.module';
 import { SeedModule } from './database/seed/seed.module';
 import { EmpresasModule } from './empresas/empresas.module';
 import { CertificadoresModule } from './certificadores/certificadores.module';
+import { CatalogoModule } from './catalogo/catalogo.module';
 
 // Entities
 import { Usuario } from './auth/entities/usuario.entity';
@@ -79,6 +80,7 @@ import { Certificador } from './certificadores/entities/certificador.entity';
     DocumentosModule,
     EmpresasModule,
     CertificadoresModule,
+    CatalogoModule,
 
     // Seed module - runs on bootstrap if DB is empty
     SeedModule,

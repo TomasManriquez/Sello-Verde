@@ -6,13 +6,14 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { Usuario } from './entities/usuario.entity';
+import { JWT_SECRET } from './jwt-secret';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Usuario]),
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'sello-verde-mvp-secret-2024',
+      secret: JWT_SECRET,
       signOptions: { expiresIn: '24h' },
     }),
   ],

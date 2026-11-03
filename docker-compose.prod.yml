@@ -47,8 +47,7 @@ services:
       dockerfile: Dockerfile.prod
     container_name: sello_verde_backend
     restart: always
-    ports:
-      - "3001:3001"
+    # Sin `ports`: solo el frontend (Next.js reexpone /api) llega al backend por la red interna
     environment:
       NODE_ENV: production
       # Base de datos (resuelto por DNS interno de Docker)

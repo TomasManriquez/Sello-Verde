@@ -194,6 +194,10 @@ export class SeedService implements OnApplicationBootstrap {
     }
 
       // Si no existe, lo creamos
+    // Solo desarrollo usa la contraseña de ejemplo: en producción una variable vacía no debe dejar un admin conocido
+    if (!process.env.ADMIN_PASSWORD && process.env.NODE_ENV === 'production') {
+      throw new Error('ADMIN_PASSWORD es obligatoria en producción');
+    }
     const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'slep2024', 10);
     const admin = await this.usuarioRepo.save(
       this.usuarioRepo.create({

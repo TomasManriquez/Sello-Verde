@@ -17,6 +17,7 @@ import { CreateEstablecimientoDto } from './dto/create-establecimiento.dto';
 import { CreateLocalDto } from './dto/create-local.dto';
 import { ExportEstablecimientosDto } from './dto/export-establecimientos.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Capacidad } from '../auth/capacidades';
 import { EstadoGeneral } from '../common/enums';
 
 @UseGuards(JwtAuthGuard)
@@ -39,6 +40,7 @@ export class EstablecimientosController {
   }
 
   // Reporte Excel de los establecimientos seleccionados (una sola hoja)
+  @Capacidad('read')
   @Post('export')
   async exportar(@Body() dto: ExportEstablecimientosDto, @Res() res: Response) {
     const buffer = await this.service.exportarExcel(dto.ids);

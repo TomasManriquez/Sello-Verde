@@ -19,6 +19,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       return null;
     }
-    return { id: payload.sub, email: payload.email, rol: payload.rol };
+    return { id: payload.sub, email: payload.email, rol: user.rol };
   }
 }

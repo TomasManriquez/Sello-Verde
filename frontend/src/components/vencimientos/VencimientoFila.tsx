@@ -11,6 +11,7 @@ import {
   pideInspeccion,
   URGENCIA_COLOR,
 } from '@/lib/vencimientos';
+import { puede } from '@/lib/capacidades';
 
 /**
  * Una instalación con un plazo corriendo. Una sola acción por fila: registrar la inspección
@@ -57,7 +58,7 @@ export function VencimientoFila({ v }: { v: Vencimiento }) {
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{motivoTexto(v)}</div>
       </div>
 
-      {pideInspeccion(v) ? (
+      {pideInspeccion(v) && puede('write') ? (
         <Link href={inspeccionHref(v)} className="btn btn-secondary btn-sm">
           Registrar inspección
         </Link>

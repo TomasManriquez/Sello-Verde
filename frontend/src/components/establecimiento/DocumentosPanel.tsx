@@ -5,6 +5,7 @@ import { Pencil, Trash } from 'lucide-react';
 import { documentosApi, getToken, Documento } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { CATEGORIAS_DOCUMENTO, formatDate, formatBytes } from '@/lib/constants';
+import { puede } from '@/lib/capacidades';
 
 interface Props {
   expedienteId: number;
@@ -154,16 +155,18 @@ export function DocumentosPanel({ expedienteId, documentos }: Props) {
                   <strong style={{ fontFamily: 'Satoshi, sans-serif', fontSize: 'var(--text-sm)' }}>{cat.label}</strong>
                   <span className={`badge ${enCarpeta.length > 0 ? 'badge-primary' : 'badge-gris'}`}>{enCarpeta.length}</span>
                 </button>
-                <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
-                  {subiendo === cat.key ? 'Subiendo…' : '+ Subir aquí'}
-                  <input
-                    type="file"
-                    onChange={(e) => subir(e, cat.key)}
-                    disabled={subiendo !== null}
-                    aria-label={`Subir archivo a ${cat.label}`}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+                {puede('write') && (
+                  <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
+                    {subiendo === cat.key ? 'Subiendo…' : '+ Subir aquí'}
+                    <input
+                      type="file"
+                      onChange={(e) => subir(e, cat.key)}
+                      disabled={subiendo !== null}
+                      aria-label={`Subir archivo a ${cat.label}`}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                )}
               </div>
 
               {abierta && (
@@ -226,8 +229,8 @@ export function DocumentosPanel({ expedienteId, documentos }: Props) {
                                       <option key={c.key} value={c.key}>{c.label}</option>
                                     ))}
                                   </select>
-                                  <Button variant="ghost" size="sm" onClick={() => { setRenamingId(doc.id); setRenameValue(doc.nombre_original); }} title="Renombrar archivo" aria-label="Renombrar archivo"><Pencil size={16} aria-hidden="true" /></Button>
-                                  <Button variant="ghost" size="sm" onClick={() => eliminar(doc)} loading={deletingId === doc.id} title="Eliminar archivo" aria-label="Eliminar archivo" style={{ color: 'var(--color-rojo)' }}><Trash size={16} aria-hidden="true" /></Button>
+                                  {puede('write') && <Button variant="ghost" size="sm" onClick={() => { setRenamingId(doc.id); setRenameValue(doc.nombre_original); }} title="Renombrar archivo" aria-label="Renombrar archivo"><Pencil size={16} aria-hidden="true" /></Button>}
+                                  {puede('delete') && <Button variant="ghost" size="sm" onClick={() => eliminar(doc)} loading={deletingId === doc.id} title="Eliminar archivo" aria-label="Eliminar archivo" style={{ color: 'var(--color-rojo)' }}><Trash size={16} aria-hidden="true" /></Button>}
                                 </div>
                               </td>
                             </tr>

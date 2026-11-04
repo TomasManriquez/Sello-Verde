@@ -8,6 +8,7 @@ import { Stepper } from '@/components/ui/Stepper';
 import { Modal } from '@/components/ui/Modal';
 import { EmpresaPicker } from '@/components/registro/EmpresaPicker';
 import { TC6_ESTADOS, Tc6Estado } from '@/lib/constants';
+import { puede } from '@/lib/capacidades';
 
 /** Siguientes estados TC6 permitidos (espejo de TC6_TRANSITIONS del backend). */
 const TC6_SIGUIENTES: Record<string, Tc6Estado[]> = {
@@ -90,7 +91,7 @@ export function ProyectoPanel({ expediente, onChanged, advanceRef }: Props) {
         <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', margin: 0 }}>
           Proyecto y contratista
         </h2>
-        <Button variant="ghost" size="sm" onClick={abrirEdicion}>Cambiar empresa</Button>
+        {puede('write') && <Button variant="ghost" size="sm" onClick={abrirEdicion}>Cambiar empresa</Button>}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
@@ -126,7 +127,7 @@ export function ProyectoPanel({ expediente, onChanged, advanceRef }: Props) {
         </span>
         <Stepper current={expediente.estado_tc6} />
 
-        {siguientes.length > 0 && (
+        {puede('write') && siguientes.length > 0 && (
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-4)' }}>
             {siguientes.map((key) => {
               const label = TC6_ESTADOS.find((s) => s.key === key)?.label ?? key;

@@ -9,6 +9,7 @@ import { EstablecimientoTable } from '@/components/tables/EstablecimientoTable';
 import { EtapasCartera, EtapaKey, ETAPAS_CARTERA } from '@/components/dashboard/EtapasCartera';
 import { RequiereAccion } from '@/components/dashboard/RequiereAccion';
 import { RegistrarInspeccionModal } from '@/components/dashboard/RegistrarInspeccionModal';
+import { puede } from '@/lib/capacidades';
 
 const sectionTitle: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)', margin: 0 };
 
@@ -51,10 +52,12 @@ export default function DashboardPage() {
             Estado de la certificación de gas en los establecimientos del SLEP y los plazos que requieren acción.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <Link href="/establecimientos?nuevo=1" className="btn btn-secondary">+ Establecimiento</Link>
-          <Button onClick={() => setInspeccionOpen(true)}>Registrar inspección</Button>
-        </div>
+        {puede('write') && (
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <Link href="/establecimientos?nuevo=1" className="btn btn-secondary">+ Establecimiento</Link>
+            <Button onClick={() => setInspeccionOpen(true)}>Registrar inspección</Button>
+          </div>
+        )}
       </div>
 
       {statsError && (

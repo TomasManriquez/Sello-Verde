@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { AccionesFila } from '@/components/ui/AccionesFila';
 import { CertificadorFormModal } from './CertificadorFormModal';
 import { ConfirmarEliminarModal } from './ConfirmarEliminarModal';
+import { puede } from '@/lib/capacidades';
 
 const titulo: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)', margin: 0 };
 const sub: React.CSSProperties = { fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' };
@@ -43,7 +44,7 @@ export function CertificadoresSection() {
           <h2 id="certificadores-titulo" style={titulo}>Certificadores</h2>
           <span style={sub}>Personas que validan (inspeccionan) las instalaciones. Son independientes de la empresa contratista.</span>
         </div>
-        <Button variant="secondary" onClick={() => { setEditando(null); setFormOpen(true); }}>+ Nuevo certificador</Button>
+        {puede('write') && <Button variant="secondary" onClick={() => { setEditando(null); setFormOpen(true); }}>+ Nuevo certificador</Button>}
       </div>
 
       {items.length > 5 && (

@@ -6,6 +6,7 @@ import { Establecimiento, Local, Instalacion, SelloInstalacion } from '@/lib/api
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatDate, getUrgencyColor } from '@/lib/constants';
+import { puede } from '@/lib/capacidades';
 
 interface Props {
   ee: Establecimiento;
@@ -71,14 +72,16 @@ export function InstalacionesPanel({ ee, expedienteId, onAddLocal, onAddInstalac
             Cada instalación tiene su propio sello y plazo.
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <Button variant="secondary" size="sm" onClick={onAddLocal}>+ Agregar local</Button>
-          {locales.length > 0 && (
-            <Button as="a" href={`/establecimientos/${ee.id}/anexo2`} variant="ghost" size="sm">
-              Editar levantamiento (Anexo 2)
-            </Button>
-          )}
-        </div>
+        {puede('write') && (
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <Button variant="secondary" size="sm" onClick={onAddLocal}>+ Agregar local</Button>
+            {locales.length > 0 && (
+              <Button as="a" href={`/establecimientos/${ee.id}/anexo2`} variant="ghost" size="sm">
+                Editar levantamiento (Anexo 2)
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {locales.length === 0 ? (
@@ -113,7 +116,7 @@ export function InstalacionesPanel({ ee, expedienteId, onAddLocal, onAddInstalac
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{local.direccion}</div>
                     )}
                     <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginTop: 'var(--space-1)' }}>
-                      {local.usa_gas && insts.length > 0 && (
+                      {puede('write') && local.usa_gas && insts.length > 0 && (
                         <button
                           type="button"
                           onClick={() => onAddInstalacion(local.id)}
@@ -122,14 +125,16 @@ export function InstalacionesPanel({ ee, expedienteId, onAddLocal, onAddInstalac
                           + Instalación
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => onEliminarLocal(local)}
-                        aria-label={`Eliminar local ${local.numero_local}`}
-                        style={{ background: 'none', border: 'none', padding: 0, minHeight: 28, color: 'var(--color-rojo)', cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600 }}
-                      >
-                        Eliminar local
-                      </button>
+                      {puede('delete') && (
+                        <button
+                          type="button"
+                          onClick={() => onEliminarLocal(local)}
+                          aria-label={`Eliminar local ${local.numero_local}`}
+                          style={{ background: 'none', border: 'none', padding: 0, minHeight: 28, color: 'var(--color-rojo)', cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+                        >
+                          Eliminar local
+                        </button>
+                      )}
                     </div>
                   </td>
                 );
@@ -171,23 +176,25 @@ export function InstalacionesPanel({ ee, expedienteId, onAddLocal, onAddInstalac
                     <td><SelloCelda sello={inst.sello} /></td>
                     <td><LimiteCelda sello={inst.sello} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {expedienteId ? (
+                      {expedienteId && puede('write') ? (
                         <Button as="a" href={hrefInspeccion(inst.id)} variant="secondary" size="sm">
                           Registrar inspección
                         </Button>
                       ) : (
                         <span style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>Inicia la gestión</span>
                       )}
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => onEliminarInstalacion(inst, local)}
-                        aria-label="Eliminar instalación"
-                        title="Eliminar instalación"
-                        style={{ color: 'var(--color-rojo)', minWidth: 44, minHeight: 44, marginLeft: 'var(--space-1)' }}
-                      >
-                        <Trash size={16} aria-hidden="true" />
-                      </button>
+                      {puede('delete') && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => onEliminarInstalacion(inst, local)}
+                          aria-label="Eliminar instalación"
+                          title="Eliminar instalación"
+                          style={{ color: 'var(--color-rojo)', minWidth: 44, minHeight: 44, marginLeft: 'var(--space-1)' }}
+                        >
+                          <Trash size={16} aria-hidden="true" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ));

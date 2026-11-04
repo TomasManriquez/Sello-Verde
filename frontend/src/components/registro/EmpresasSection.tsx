@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { AccionesFila } from '@/components/ui/AccionesFila';
 import { EmpresaFormModal } from './EmpresaFormModal';
 import { ConfirmarEliminarModal } from './ConfirmarEliminarModal';
+import { puede } from '@/lib/capacidades';
 
 const titulo: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-lg)', margin: 0 };
 const sub: React.CSSProperties = { fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' };
@@ -44,7 +45,7 @@ export function EmpresasSection() {
           <h2 id="empresas-titulo" style={titulo}>Empresas contratistas</h2>
           <span style={sub}>Proveen los insumos técnicos y la mano de obra de la instalación de gas.</span>
         </div>
-        <Button onClick={() => { setEditando(null); setFormOpen(true); }}>+ Nueva empresa</Button>
+        {puede('write') && <Button onClick={() => { setEditando(null); setFormOpen(true); }}>+ Nueva empresa</Button>}
       </div>
 
       {empresas.length > 5 && (

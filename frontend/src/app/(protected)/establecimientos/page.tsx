@@ -8,6 +8,7 @@ import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { EstablecimientoTable } from '@/components/tables/EstablecimientoTable';
 import { ESTADO_GENERAL, ESTADO_GENERAL_OPCIONES } from '@/lib/constants';
+import { puede } from '@/lib/capacidades';
 
 const NUEVO_VACIO = {
   rbd: '',
@@ -215,7 +216,7 @@ export default function EstablecimientosPage() {
               Selecciona uno o más para exportar su información a Excel.
             </p>
           </div>
-          <Button onClick={() => setModalOpen(true)}>+ Agregar establecimiento</Button>
+          {puede('write') && <Button onClick={() => setModalOpen(true)}>+ Agregar establecimiento</Button>}
         </div>
 
         {/* Barra de selección */}
@@ -227,15 +228,17 @@ export default function EstablecimientosPage() {
                 ? `${seleccionados.size} de ${establecimientos.length} seleccionados`
                 : `${establecimientos.length} ${establecimientos.length === 1 ? 'establecimiento' : 'establecimientos'}`}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => { setEmpresaAsignar(null); setAsignarError(null); setAsignarOpen(true); }}
-            disabled={seleccionados.size === 0}
-            title={seleccionados.size === 0 ? 'Selecciona al menos un establecimiento' : undefined}
-          >
-            🏢 Asignar empresa{seleccionados.size > 0 ? ` (${seleccionados.size})` : ''}
-          </Button>
+          {puede('write') && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setEmpresaAsignar(null); setAsignarError(null); setAsignarOpen(true); }}
+              disabled={seleccionados.size === 0}
+              title={seleccionados.size === 0 ? 'Selecciona al menos un establecimiento' : undefined}
+            >
+              🏢 Asignar empresa{seleccionados.size > 0 ? ` (${seleccionados.size})` : ''}
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -276,7 +279,7 @@ export default function EstablecimientosPage() {
             loading={loading}
             emptyMessage="No se encontraron establecimientos con los criterios seleccionados."
             seleccion={{ ids: seleccionados, onToggle: toggle, onToggleTodos: toggleTodos }}
-            onEliminar={(ee) => { setDeleteTarget(ee); setDeleteError(null); }}
+            onEliminar={puede('delete') ? (ee) => { setDeleteTarget(ee); setDeleteError(null); } : undefined}
           />
         </div>
       </div>

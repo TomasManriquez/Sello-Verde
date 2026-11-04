@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { CertificadorPicker } from '@/components/registro/CertificadorPicker';
 import { formatDate, instalacionLabel } from '@/lib/constants';
+import { puede } from '@/lib/capacidades';
 
 interface Props {
   certificaciones: Certificacion[];
@@ -86,7 +87,7 @@ export function HistorialPanel({ certificaciones, onChanged }: Props) {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <Badge estado={c.tipo_sello} />
-                    <Button variant="ghost" size="sm" onClick={() => abrirEdicion(c)} aria-label="Editar inspección"><Pencil size={16} aria-hidden="true" /> Editar</Button>
+                    {puede('write') && <Button variant="ghost" size="sm" onClick={() => abrirEdicion(c)} aria-label="Editar inspección"><Pencil size={16} aria-hidden="true" /> Editar</Button>}
                   </div>
                 </div>
               );

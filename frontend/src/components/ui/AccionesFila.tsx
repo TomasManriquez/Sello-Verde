@@ -2,6 +2,7 @@
 
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Ellipsis, Pencil, Trash } from 'lucide-react';
+import { puede } from '@/lib/capacidades';
 
 interface Props {
   /** Nombre del registro, para los textos accesibles ("Editar Instalgas Sur") */
@@ -40,6 +41,10 @@ export function AccionesFila({ etiqueta, onEditar, onEliminar }: Props) {
     accion();
   };
 
+  const editar = puede('write');
+  const eliminar = puede('delete');
+  if (!editar && !eliminar) return null;
+
   return (
     <div ref={raiz} className={`acciones-fila${abierto ? ' abierto' : ''}`}>
       {/* Se despliega a la izquierda del botón de tres puntos */}
@@ -50,26 +55,30 @@ export function AccionesFila({ etiqueta, onEditar, onEliminar }: Props) {
         aria-label={`Acciones de ${etiqueta}`}
         aria-hidden={!abierto}
       >
-        <button
-          type="button"
-          className="acciones-icono"
-          onClick={elegir(onEditar)}
-          tabIndex={abierto ? 0 : -1}
-          aria-label={`Editar ${etiqueta}`}
-          title="Editar"
-        >
-          <Pencil size={16} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="acciones-icono peligro"
-          onClick={elegir(onEliminar)}
-          tabIndex={abierto ? 0 : -1}
-          aria-label={`Eliminar ${etiqueta}`}
-          title="Eliminar"
-        >
-          <Trash size={16} aria-hidden="true" />
-        </button>
+        {editar && (
+          <button
+            type="button"
+            className="acciones-icono"
+            onClick={elegir(onEditar)}
+            tabIndex={abierto ? 0 : -1}
+            aria-label={`Editar ${etiqueta}`}
+            title="Editar"
+          >
+            <Pencil size={16} aria-hidden="true" />
+          </button>
+        )}
+        {eliminar && (
+          <button
+            type="button"
+            className="acciones-icono peligro"
+            onClick={elegir(onEliminar)}
+            tabIndex={abierto ? 0 : -1}
+            aria-label={`Eliminar ${etiqueta}`}
+            title="Eliminar"
+          >
+            <Trash size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
       <button
         type="button"

@@ -17,6 +17,7 @@ import { InstalacionesPanel } from '@/components/establecimiento/InstalacionesPa
 import { ProyectoPanel } from '@/components/establecimiento/ProyectoPanel';
 import { DocumentosPanel } from '@/components/establecimiento/DocumentosPanel';
 import { HistorialPanel } from '@/components/establecimiento/HistorialPanel';
+import { puede } from '@/lib/capacidades';
 
 const h1: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', margin: 0 };
 const cardTitle: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' };
@@ -214,16 +215,18 @@ export default function EstablecimientoDetailPage() {
             RBD {ee.rbd}{ee.comuna ? ` · ${ee.comuna}` : ''}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <Button variant="secondary" onClick={() => abrir(setEditOpen)}><Pencil size={16} aria-hidden="true" /> Editar</Button>
-          {accion?.kind === 'inspeccion' ? (
-            <Button as="a" href={hrefInspeccion}>{accion.label}</Button>
-          ) : accion ? (
-            <Button onClick={ejecutarAccion}>{accion.label}</Button>
-          ) : exp && hayInstalaciones ? (
-            <Button as="a" href={`/expedientes/${exp.id}/certificacion`}>Registrar inspección</Button>
-          ) : null}
-        </div>
+        {puede('write') && (
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={() => abrir(setEditOpen)}><Pencil size={16} aria-hidden="true" /> Editar</Button>
+            {accion?.kind === 'inspeccion' ? (
+              <Button as="a" href={hrefInspeccion}>{accion.label}</Button>
+            ) : accion ? (
+              <Button onClick={ejecutarAccion}>{accion.label}</Button>
+            ) : exp && hayInstalaciones ? (
+              <Button as="a" href={`/expedientes/${exp.id}/certificacion`}>Registrar inspección</Button>
+            ) : null}
+          </div>
+        )}
       </div>
 
       <BannerProximoPaso paso={paso} />

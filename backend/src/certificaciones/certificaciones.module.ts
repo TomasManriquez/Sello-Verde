@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CertificacionesController } from './certificaciones.controller';
 import { CertificacionesService } from './certificaciones.service';
@@ -8,7 +8,7 @@ import { Expediente } from '../expedientes/entities/expediente.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Local } from '../establecimientos/entities/local.entity';
 import { Instalacion } from '../instalaciones/entities/instalacion.entity';
-import { Alerta } from '../alertas/entities/alerta.entity';
+import { CertificadoresModule } from '../certificadores/certificadores.module';
 
 @Module({
   imports: [
@@ -19,8 +19,8 @@ import { Alerta } from '../alertas/entities/alerta.entity';
       Establecimiento,
       Local,
       Instalacion,
-      Alerta,
     ]),
+    forwardRef(() => CertificadoresModule),
   ],
   controllers: [CertificacionesController],
   providers: [CertificacionesService],

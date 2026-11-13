@@ -1,159 +1,167 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { establecimientosApi, localesApi, expedientesApi, Establecimiento, Local, Expediente } from '@/lib/api';
+import { establecimientosApi, localesApi, expedientesApi, Establecimiento, Expediente, Local, Instalacion } from '@/lib/api';
+import { instalacionLabel } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
+import { EmpresaPicker } from '@/components/registro/EmpresaPicker';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { ESTADO_GENERAL } from '@/lib/constants';
+import { TIPO_GAS_OPTIONS, ABASTECIMIENTO_OPTIONS, ZONA_OPTIONS } from '@/lib/constants';
+import { calcularProximoPaso } from '@/lib/proximoPaso';
+import { EtapasProceso, BannerProximoPaso } from '@/components/establecimiento/EtapasProceso';
+import { InstalacionesPanel } from '@/components/establecimiento/InstalacionesPanel';
+import { ProyectoPanel } from '@/components/establecimiento/ProyectoPanel';
+import { DocumentosPanel } from '@/components/establecimiento/DocumentosPanel';
+import { HistorialPanel } from '@/components/establecimiento/HistorialPanel';
+import { puede } from '@/lib/capacidades';
 
+const h1: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', margin: 0 };
+const cardTitle: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' };
+const errorBox: React.CSSProperties = { color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' };
+type Tab = 'instalaciones' | 'documentos' | 'historial' | 'proyecto';
+const optionsOf =(list: readonly string[]) => list.map((v) => ({ value: v, label: v }));
+
+/**
+ * Ficha única del establecimiento: levantamiento (locales e instalaciones), proyecto TC6,
+ * sellos y plazos por instalación, documentos e historial en una sola vista.
+ */
 export default function EstablecimientoDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
 
   const [ee, setEe] = useState<Establecimiento | null>(null);
-  const [locales, setLocales] = useState<Local[]>([]);
+  const [exp, setExp] = useState<Expediente | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const advanceRef = useRef<((estado: string) => Promise<void>) | null>(null);
 
-  // New Local Modal state
-  const [localModalOpen, setLocalModalOpen] = useState(false);
-  const [newLocal, setNewLocal] = useState({
-    numero_local: 1,
-    nombre: '',
-    direccion: '',
-    usa_gas: true,
+  // Modales
+  const [localOpen, setLocalOpen] = useState(false);
+  const [newLocal, setNewLocal] = useState({ nombre: '', direccion: '', usa_gas: true });
+  const [instLocalId, setInstLocalId] = useState<number | null>(null);
+  const [newInst, setNewInst] = useState({
+    tipo_gas: TIPO_GAS_OPTIONS[0] as string,
+    abastecimiento: ABASTECIMIENTO_OPTIONS[0] as string,
+    zona_abastecimiento: ZONA_OPTIONS[0] as string,
+    referencia: '',
+    artefacto_cilindro: '',
   });
-  const [addingLocal, setAddingLocal] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [gestionOpen, setGestionOpen] = useState(false);
+  const [empresaGestion, setEmpresaGestion] = useState<number | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editData, setEditData] = useState({ nombre: '', direccion: '', comuna: '', nombre_propietario: '' });
+  const [tab, setTab] = useState<Tab>('instalaciones');
+  const [busy, setBusy] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [aEliminar, setAEliminar] = useState<
+    { tipo: 'local'; local: Local } | { tipo: 'instalacion'; inst: Instalacion; local: Local } | null
+  >(null);
 
-  // Start Expediente Modal state
-  const [expediente, setExpediente] = useState<Expediente | null>(null);
-  const [expedienteModalOpen, setExpedienteModalOpen] = useState(false);
-  const [newExpediente, setNewExpediente] = useState({
-    empresa_instaladora: '',
-    rut_empresa: '',
-  });
-  const [startingExpediente, setStartingExpediente] = useState(false);
-  const [expedienteError, setExpedienteError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try {
+      const data = await establecimientosApi.get(id);
+      setEe(data);
+      setExp(data.expediente_activo ? await expedientesApi.get(data.expediente_activo.id) : null);
+      setError(null);
 
-  // Edit EE Modal state
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editData, setEditData] = useState({
-    nombre: '',
-    direccion: '',
-    comuna: '',
-    nombre_propietario: '',
-  });
-  const [editing, setEditing] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
-  const loadData = () => {
-    setLoading(true);
-    establecimientosApi.get(id)
-      .then(data => {
-        setEe(data);
-        setLocales(data.locales ?? []);
-        setError(null);
-        
-        // Pre-fill next local number
-        const nextNum = (data.locales ?? []).reduce((max, l) => l.numero_local > max ? l.numero_local : max, 0) + 1;
-        setNewLocal(prev => ({ ...prev, numero_local: nextNum }));
-
-        // Pre-fill edit data
-        setEditData({
-          nombre: data.nombre ?? '',
-          direccion: data.direccion ?? '',
-          comuna: data.comuna ?? '',
-          nombre_propietario: data.nombre_propietario ?? data.propietario ?? '',
-        });
-      })
-      .catch(err => {
-        setError(err.message || 'Error al cargar los detalles del establecimiento');
-      })
-      .finally(() => {
-        setLoading(false);
+      setEditData({
+        nombre: data.nombre ?? '',
+        direccion: data.direccion ?? '',
+        comuna: data.comuna ?? '',
+        nombre_propietario: data.nombre_propietario ?? data.propietario ?? '',
       });
-  };
-
-  useEffect(() => {
-    if (id) loadData();
+    } catch (err: any) {
+      setError(err.message || 'Error al cargar el establecimiento');
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
-  const handleAddLocal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLocal.nombre.trim() || !newLocal.direccion.trim()) {
-      setLocalError('Todos los campos son obligatorios');
-      return;
-    }
+  useEffect(() => {
+    if (id) load();
+  }, [id, load]);
 
-    setAddingLocal(true);
-    setLocalError(null);
+  /** Ejecuta una acción de modal: maneja loading y error, y recarga la ficha al terminar. */
+  const run = async (fn: () => Promise<void>, close: () => void) => {
+    setBusy(true);
+    setModalError(null);
     try {
-      const created = await localesApi.create(id, newLocal);
-      setLocales(prev => [...prev, created]);
-      setLocalModalOpen(false);
-      setNewLocal(prev => ({
-        numero_local: prev.numero_local + 1,
-        nombre: '',
-        direccion: '',
-        usa_gas: true,
-      }));
+      await fn();
+      close();
+      await load();
     } catch (err: any) {
-      setLocalError(err.message || 'Error al crear local');
+      setModalError(err.message || 'Ocurrió un error');
     } finally {
-      setAddingLocal(false);
+      setBusy(false);
     }
   };
 
-  const handleStartExpediente = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newExpediente.empresa_instaladora.trim() || !newExpediente.rut_empresa.trim()) {
-      setExpedienteError('Todos los campos son obligatorios');
-      return;
-    }
+  const abrir = (setter: (v: boolean) => void) => { setModalError(null); setter(true); };
 
-    setStartingExpediente(true);
-    setExpedienteError(null);
-    try {
-      const created = await expedientesApi.create({
-        establecimiento_id: Number(id),
-        empresa_instaladora: newExpediente.empresa_instaladora,
-        rut_empresa: newExpediente.rut_empresa,
+  const handleAddLocal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLocal.nombre.trim()) { setModalError('El nombre del local es obligatorio'); return; }
+    run(async () => { await localesApi.create(id, newLocal); }, () => {
+      setLocalOpen(false);
+      setNewLocal((p) => ({ ...p, nombre: '', direccion: '', usa_gas: true }));
+    });
+  };
+
+  const handleAddInstalacion = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (instLocalId === null) return;
+    run(async () => {
+      await localesApi.addInstalacion(instLocalId, {
+        tipo_gas: newInst.tipo_gas,
+        abastecimiento: newInst.abastecimiento,
+        zona_abastecimiento: newInst.zona_abastecimiento,
+        referencia: newInst.referencia || undefined,
+        artefacto_cilindro: newInst.artefacto_cilindro || undefined,
       });
-      router.push(`/expedientes/${created.id}`);
-    } catch (err: any) {
-      setExpedienteError(err.message || 'Error al iniciar expediente');
-    } finally {
-      setStartingExpediente(false);
-    }
+    }, () => {
+      setInstLocalId(null);
+      setNewInst((p) => ({ ...p, referencia: '', artefacto_cilindro: '' }));
+    });
   };
 
-  const handleEdit = async (e: React.FormEvent) => {
+  const handleIniciarGestion = (e: React.FormEvent) => {
     e.preventDefault();
-    setEditing(true);
-    setEditError(null);
-    try {
-      const updated = await establecimientosApi.update(id, editData);
-      setEe(prev => prev ? { ...prev, ...updated } : updated);
-      setEditModalOpen(false);
-    } catch (err: any) {
-      setEditError(err.message || 'Error al actualizar establecimiento');
-    } finally {
-      setEditing(false);
+    e.stopPropagation();
+    if (!empresaGestion) {
+      setModalError('Selecciona la empresa contratista.');
+      return;
     }
+    run(async () => {
+      await expedientesApi.create({ establecimiento_id: Number(id), empresa_id: empresaGestion });
+    }, () => setGestionOpen(false));
+  };
+
+  const handleEliminar = () => {
+    if (!aEliminar) return;
+    run(async () => {
+      if (aEliminar.tipo === 'local') await localesApi.remove(aEliminar.local.id);
+      else await localesApi.deleteInstalacion(aEliminar.inst.id);
+    }, () => setAEliminar(null));
+  };
+
+  const handleEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    run(async () => { await establecimientosApi.update(id, editData); }, () => setEditOpen(false));
   };
 
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-        <div className="skeleton" style={{ height: '48px', width: '200px' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-6)' }}>
-          <div className="skeleton" style={{ height: '300px' }} />
-          <div className="skeleton" style={{ height: '500px' }} />
+        <div className="skeleton" style={{ height: '48px', width: '240px' }} />
+        <div className="skeleton" style={{ height: '64px' }} />
+        <div className="hub-grid">
+          <div className="skeleton" style={{ height: '320px' }} />
+          <div className="skeleton" style={{ height: '480px' }} />
         </div>
       </div>
     );
@@ -163,7 +171,7 @@ export default function EstablecimientoDetailPage() {
     return (
       <div style={{ padding: 'var(--space-4)' }}>
         <Button onClick={() => router.push('/establecimientos')} variant="secondary" style={{ marginBottom: 'var(--space-4)' }}>
-          ← Volver a listado
+          ← Volver a establecimientos
         </Button>
         <div style={{ color: 'var(--color-rojo)', background: 'oklch(75% 0.1 20 / 0.1)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
           {error || 'Establecimiento no encontrado'}
@@ -172,287 +180,253 @@ export default function EstablecimientoDetailPage() {
     );
   }
 
+  const paso = calcularProximoPaso(ee);
+  const accion = paso.accion;
+  const hayInstalaciones = (ee.locales ?? []).some((l) => l.usa_gas && (l.instalaciones?.length ?? 0) > 0);
+  const hrefInspeccion = exp
+    ? `/expedientes/${exp.id}/certificacion${accion?.instalacionId ? `?instalacion=${accion.instalacionId}` : ''}`
+    : '#';
+
+  const ejecutarAccion = () => {
+    if (!accion) return;
+    switch (accion.kind) {
+      case 'iniciar_gestion': abrir(setGestionOpen); break;
+      case 'agregar_local': abrir(setLocalOpen); break;
+      case 'agregar_instalacion': setModalError(null); setInstLocalId(accion.localId ?? null); break;
+      case 'avanzar_tc6': if (accion.estadoTc6) advanceRef.current?.(accion.estadoTc6); break;
+    }
+  };
+
+  const f = ee.resumen_sellos;
+  const locales = ee.locales ?? [];
+  const nInstalaciones = locales.reduce((n, l) => n + (l.instalaciones?.length ?? 0), 0);
+  const tabs: { key: Tab; label: string; visible: boolean }[] = [
+    { key: 'instalaciones', label: `Instalaciones (${nInstalaciones})`, visible: true },
+    { key: 'documentos', label: `Documentos (${exp?.documentos?.length ?? 0})`, visible: !!exp },
+    { key: 'historial', label: `Historial (${exp?.certificaciones?.length ?? 0})`, visible: !!exp },
+    { key: 'proyecto', label: 'Empresa y TC6', visible: !!exp },
+  ];
+
+  // La única acción primaria de la pantalla vive en el bloque "Siguiente paso"
+  const cta = !puede('write') ? null : accion?.kind === 'inspeccion' ? (
+    <Button as="a" href={hrefInspeccion}>{accion.label}</Button>
+  ) : accion ? (
+    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      <Button onClick={ejecutarAccion}>{accion.label}</Button>
+      {paso.alternativa?.estadoTc6 && (
+        <Button variant="secondary" onClick={() => advanceRef.current?.(paso.alternativa!.estadoTc6!)}>{paso.alternativa.label}</Button>
+      )}
+    </div>
+  ) : exp && hayInstalaciones ? (
+    <Button as="a" href={`/expedientes/${exp.id}/certificacion`}>Registrar inspección</Button>
+  ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Button onClick={() => router.push('/establecimientos')} variant="ghost" size="sm" style={{ paddingLeft: 0, marginBottom: 'var(--space-2)' }}>
-            ← Volver a Establecimientos
-          </Button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <h1 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', margin: 0 }}>
-              {ee.nombre}
-            </h1>
-            <Badge estado={ee.estado_general} />
-          </div>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => setEditModalOpen(true)}>
-          ✏️ Editar
+      <div>
+        <Button onClick={() => router.push('/establecimientos')} variant="ghost" size="sm" style={{ paddingLeft: 0, marginBottom: 'var(--space-2)' }}>
+          ← Volver a Establecimientos
         </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <h1 style={h1}>{ee.nombre}</h1>
+          <Badge estado={ee.estado_general} />
+        </div>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
+          RBD {ee.rbd}{ee.comuna ? ` · ${ee.comuna}` : ''}
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-6)', alignItems: 'start' }}>
-        {/* Left column: General Information & active expediente */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-          {/* General info card */}
-          <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
-            <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-              Ficha del Establecimiento
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--text-sm)' }}>
-              <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>RBD</span>
-                <strong style={{ fontFamily: 'Satoshi, sans-serif' }}>{ee.rbd}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Dirección</span>
-                <strong>{ee.direccion}</strong>
-              </div>
-              {ee.comuna && (
-                <div>
-                  <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Comuna</span>
-                  <strong>{ee.comuna}</strong>
-                </div>
-              )}
-              <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Representante / Propietario</span>
-                <strong>{ee.nombre_propietario ?? ee.propietario}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Cantidad de Locales</span>
-                <strong>{locales.length}</strong>
-              </div>
-            </div>
-          </div>
+      <EtapasProceso estadoGeneral={ee.estado_general} />
+      <BannerProximoPaso paso={paso}>{cta}</BannerProximoPaso>
 
-          {/* Expediente status card */}
-          <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
-            <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-              Expediente Activo
-            </h2>
-            {ee.expediente_activo ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                <div style={{ fontSize: 'var(--text-sm)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Contratista:</span>
-                    <strong>{ee.expediente_activo.empresa_instaladora}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Estado Proyecto:</span>
-                    <Badge estado={ee.expediente_activo.estado_general} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Etapa TC6:</span>
-                    <Badge estado={ee.expediente_activo.estado_tc6} />
-                  </div>
-                </div>
-                <Button as="a" href={`/expedientes/${ee.expediente_activo.id}`} style={{ textAlign: 'center' }}>
-                  Ver Progreso del Expediente
-                </Button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'center', textAlign: 'center', padding: 'var(--space-4) 0' }}>
-                <span style={{ fontSize: 'var(--space-8)' }}>📂</span>
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-                  Este establecimiento no tiene un expediente de regularización activo en este momento.
-                </p>
-                <Button onClick={() => setExpedienteModalOpen(true)} size="sm" style={{ marginTop: 'var(--space-2)' }}>
-                  Iniciar Licitación / Expediente
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right column: Locales list */}
-        <div className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-            <h2 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', margin: 0 }}>
-              Locales y Anexos
-            </h2>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <Button onClick={() => setLocalModalOpen(true)} variant="secondary" size="sm">
-                + Agregar Local
-              </Button>
-              <Button
-                as="a"
-                href={locales.length === 0 ? '#' : `/establecimientos/${ee.id}/anexo2`}
-                variant="primary"
-                size="sm"
-                style={locales.length === 0 ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
+      <div className="ficha-grid">
+        {/* Trabajo: instalaciones, documentos, historial y proyecto, uno a la vez */}
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div className="tabs-header" role="tablist" aria-label="Información del establecimiento">
+            {tabs.filter((t) => t.visible).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                id={`tab-${t.key}`}
+                aria-selected={tab === t.key}
+                aria-controls={`panel-${t.key}`}
+                className={`tab-btn${tab === t.key ? ' active' : ''}`}
+                style={{ minHeight: 44 }}
+                onClick={() => setTab(t.key)}
               >
-                Digitalizar Anexo 2
-              </Button>
-            </div>
+                {t.label}
+              </button>
+            ))}
           </div>
 
-          {locales.length === 0 ? (
-            <div className="empty-state" style={{ padding: 'var(--space-12) 0' }}>
-              <span className="empty-state-icon">🏢</span>
-              <p style={{ margin: 0 }}>No hay locales registrados en este establecimiento.</p>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
-                Debe registrar al menos un local para realizar el levantamiento técnico (Anexo 2).
-              </p>
-            </div>
-          ) : (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Nº Local</th>
-                    <th>Nombre Local</th>
-                    <th>Dirección Local</th>
-                    <th>Usa Gas</th>
-                    <th style={{ textAlign: 'right' }}>Instalaciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {locales.map(local => (
-                    <tr key={local.id}>
-                      <td style={{ fontWeight: 600 }}>{local.numero_local}</td>
-                      <td style={{ fontWeight: 600 }}>{local.nombre}</td>
-                      <td>{local.direccion}</td>
-                      <td>{local.usa_gas ? '🟢 Sí' : '❌ No'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {local.usa_gas ? `${local.instalaciones?.length ?? 0} registradas` : 'N/A'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Add Local Modal */}
-      <Modal open={localModalOpen} onClose={() => setLocalModalOpen(false)} title="Agregar Local">
-        <form onSubmit={handleAddLocal} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          {localError && (
-            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>
-              ⚠️ {localError}
-            </div>
-          )}
-          <Input
-            label="Número Correlativo"
-            type="number"
-            value={newLocal.numero_local}
-            onChange={e => setNewLocal(prev => ({ ...prev, numero_local: Number(e.target.value) }))}
-            required
-          />
-          <Input
-            label="Nombre del Local"
-            placeholder="Ej: Casino Principal, Pabellón A, etc."
-            value={newLocal.nombre}
-            onChange={e => setNewLocal(prev => ({ ...prev, nombre: e.target.value }))}
-            required
-          />
-          <Input
-            label="Dirección / Ubicación dentro del recinto"
-            placeholder="Ej: Patio trasero, Edificio Norte Piso 1"
-            value={newLocal.direccion}
-            onChange={e => setNewLocal(prev => ({ ...prev, direccion: e.target.value }))}
-            required
-          />
-          <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-            <label className="label" style={{ margin: 0 }}>¿Usa gas?</label>
-            <input
-              type="checkbox"
-              checked={newLocal.usa_gas}
-              onChange={e => setNewLocal(prev => ({ ...prev, usa_gas: e.target.checked }))}
-              style={{
-                width: 20,
-                height: 20,
-                accentColor: 'var(--color-primary)',
-                cursor: 'pointer',
-              }}
+          {/* Todos montados, solo se oculta el inactivo: el avance de TC6 del botón primario necesita el ProyectoPanel vivo */}
+          <div role="tabpanel" id="panel-instalaciones" aria-labelledby="tab-instalaciones" hidden={tab !== 'instalaciones'}>
+            <InstalacionesPanel
+              ee={ee}
+              expedienteId={exp?.id}
+              onAddLocal={() => abrir(setLocalOpen)}
+              onAddInstalacion={(localId) => { setModalError(null); setInstLocalId(localId); }}
+              onEliminarLocal={(local) => { setModalError(null); setAEliminar({ tipo: 'local', local }); }}
+              onEliminarInstalacion={(inst, local) => { setModalError(null); setAEliminar({ tipo: 'instalacion', inst, local }); }}
             />
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
-            <Button type="button" variant="secondary" onClick={() => setLocalModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" loading={addingLocal}>
-              Agregar Local
-            </Button>
+          {exp && (
+            <>
+              <div role="tabpanel" id="panel-documentos" aria-labelledby="tab-documentos" hidden={tab !== 'documentos'}>
+                <DocumentosPanel expedienteId={exp.id} documentos={exp.documentos ?? []} />
+              </div>
+              <div role="tabpanel" id="panel-historial" aria-labelledby="tab-historial" hidden={tab !== 'historial'}>
+                <HistorialPanel certificaciones={exp.certificaciones ?? []} onChanged={load} />
+              </div>
+              <div role="tabpanel" id="panel-proyecto" aria-labelledby="tab-proyecto" hidden={tab !== 'proyecto'}>
+                <ProyectoPanel expediente={exp} onChanged={load} advanceRef={advanceRef} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Consulta: detalles del establecimiento */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          <section className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+              <h2 style={{ ...cardTitle, border: 0, padding: 0, margin: 0 }}>Detalles</h2>
+              {puede('write') && (
+                <Button variant="ghost" size="sm" onClick={() => abrir(setEditOpen)}><Pencil size={16} aria-hidden="true" /> Editar</Button>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--text-sm)' }}>
+              {[
+                ['RBD', ee.rbd],
+                ['Dirección', ee.direccion],
+                ['Comuna', ee.comuna],
+                ['Representante / Propietario', ee.nombre_propietario ?? ee.propietario],
+                ['Locales', String((ee.locales ?? []).length)],
+              ].map(([label, value]) =>
+                value ? (
+                  <div key={label}>
+                    <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>{label}</span>
+                    <strong>{value}</strong>
+                  </div>
+                ) : null,
+              )}
+              {f && f.total_instalaciones > 0 && (
+                <div>
+                  <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Sellos de las instalaciones</span>
+                  <strong>
+                    {f.verdes} de {f.total_instalaciones} con Sello Verde
+                    {f.amarillos + f.rojos > 0 ? ` · ${f.amarillos + f.rojos} con defectos` : ''}
+                    {f.sin_inspeccion > 0 ? ` · ${f.sin_inspeccion} sin inspección` : ''}
+                  </strong>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Agregar local */}
+      <Modal open={localOpen} onClose={() => setLocalOpen(false)} title="Agregar local">
+        <form onSubmit={handleAddLocal} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {modalError && <div style={errorBox}>⚠️ {modalError}</div>}
+          <Input label="Nombre del local" placeholder="Ej: Casino Principal, Pabellón A" value={newLocal.nombre} onChange={(e) => setNewLocal((p) => ({ ...p, nombre: e.target.value }))} required />
+          <Input label="Dirección / ubicación dentro del recinto" placeholder="Ej: Patio trasero, Edificio Norte Piso 1" value={newLocal.direccion} onChange={(e) => setNewLocal((p) => ({ ...p, direccion: e.target.value }))} />
+          <label style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', fontSize: 'var(--text-sm)' }}>
+            <input type="checkbox" checked={newLocal.usa_gas} onChange={(e) => setNewLocal((p) => ({ ...p, usa_gas: e.target.checked }))} style={{ width: 20, height: 20, accentColor: 'var(--color-primary)' }} />
+            Este local usa gas
+          </label>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={() => setLocalOpen(false)}>Cancelar</Button>
+            <Button type="submit" loading={busy}>Agregar local</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Start Expediente Modal */}
-      <Modal open={expedienteModalOpen} onClose={() => setExpedienteModalOpen(false)} title="Iniciar Licitación / Expediente">
-        <form onSubmit={handleStartExpediente} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          {expedienteError && (
-            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>
-              ⚠️ {expedienteError}
-            </div>
-          )}
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-            Inicie el seguimiento de regularización de gas. Registre la empresa contratista asignada a la licitación de este establecimiento.
-          </p>
-          <Input
-            label="Empresa Instaladora / Contratista"
-            placeholder="Ej: GasControl Limitada"
-            value={newExpediente.empresa_instaladora}
-            onChange={e => setNewExpediente(prev => ({ ...prev, empresa_instaladora: e.target.value }))}
-            required
-          />
-          <Input
-            label="RUT Empresa"
-            placeholder="Ej: 76.543.210-K"
-            value={newExpediente.rut_empresa}
-            onChange={e => setNewExpediente(prev => ({ ...prev, rut_empresa: e.target.value }))}
-            required
-          />
-          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
-            <Button type="button" variant="secondary" onClick={() => setExpedienteModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" loading={startingExpediente}>
-              Iniciar Expediente
-            </Button>
+      {/* Agregar instalación */}
+      <Modal open={instLocalId !== null} onClose={() => setInstLocalId(null)} title="Agregar instalación de gas">
+        <form onSubmit={handleAddInstalacion} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {modalError && <div style={errorBox}>⚠️ {modalError}</div>}
+          <Select label="Tipo de gas" value={newInst.tipo_gas} onChange={(e) => setNewInst((p) => ({ ...p, tipo_gas: e.target.value }))} options={optionsOf(TIPO_GAS_OPTIONS)} />
+          <Select label="Abastecimiento" value={newInst.abastecimiento} onChange={(e) => setNewInst((p) => ({ ...p, abastecimiento: e.target.value }))} options={optionsOf(ABASTECIMIENTO_OPTIONS)} />
+          <Select label="Zona de abastecimiento" value={newInst.zona_abastecimiento} onChange={(e) => setNewInst((p) => ({ ...p, zona_abastecimiento: e.target.value }))} options={optionsOf(ZONA_OPTIONS)} />
+          <Input label="Referencia" placeholder="Descripción para ubicar la instalación o los artefactos" value={newInst.referencia} onChange={(e) => setNewInst((p) => ({ ...p, referencia: e.target.value }))} />
+          <Input label="Artefacto / cilindro" placeholder="Ej: cocina-calefón" value={newInst.artefacto_cilindro} onChange={(e) => setNewInst((p) => ({ ...p, artefacto_cilindro: e.target.value }))} />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={() => setInstLocalId(null)}>Cancelar</Button>
+            <Button type="submit" loading={busy}>Agregar instalación</Button>
           </div>
         </form>
       </Modal>
-      {/* Edit Establecimiento Modal */}
-      <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} title="Editar Establecimiento">
-        <form onSubmit={handleEdit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          {editError && (
-            <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' }}>
-              ⚠️ {editError}
+
+      {/* Iniciar gestión */}
+      <Modal open={gestionOpen} onClose={() => setGestionOpen(false)} title="Iniciar gestión">
+        <form onSubmit={handleIniciarGestion} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {modalError && <div style={errorBox}>⚠️ {modalError}</div>}
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
+            Registra la empresa contratista adjudicada en la licitación de este establecimiento.
+          </p>
+          <EmpresaPicker value={empresaGestion} onChange={setEmpresaGestion} required />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={() => setGestionOpen(false)}>Cancelar</Button>
+            <Button type="submit" loading={busy}>Iniciar gestión</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Eliminar local o instalación */}
+      <Modal
+        open={aEliminar !== null}
+        onClose={() => setAEliminar(null)}
+        title={aEliminar?.tipo === 'local' ? 'Eliminar local' : 'Eliminar instalación'}
+        maxWidth="480px"
+      >
+        {aEliminar && (() => {
+          const instalaciones = aEliminar.tipo === 'local' ? aEliminar.local.instalaciones ?? [] : [aEliminar.inst];
+          const inspeccionadas = instalaciones.filter((i) => i.sello && i.sello.estado_sello !== 'sin_inspeccion').length;
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <div style={{ background: 'oklch(75% 0.1 20 / 0.1)', border: '1px solid oklch(60% 0.18 15 / 0.3)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+                {aEliminar.tipo === 'local' ? (
+                  <p style={{ margin: 0 }}>
+                    Se eliminará el <strong>Local {aEliminar.local.numero_local}{aEliminar.local.nombre ? ` — ${aEliminar.local.nombre}` : ''}</strong>
+                    {instalaciones.length > 0
+                      ? <> junto con sus <strong>{instalaciones.length} {instalaciones.length === 1 ? 'instalación' : 'instalaciones'}</strong>.</>
+                      : '.'}
+                  </p>
+                ) : (
+                  <p style={{ margin: 0 }}>
+                    Se eliminará la instalación <strong>{instalacionLabel({ ...aEliminar.inst, local: aEliminar.local }) || `#${aEliminar.inst.id}`}</strong>.
+                  </p>
+                )}
+                <ul style={{ margin: 'var(--space-2) 0 0 var(--space-4)', color: 'var(--color-text-muted)' }}>
+                  <li>Dejan de contar en los vencimientos.</li>
+                  <li>
+                    Las inspecciones ya registradas se conservan en el historial
+                    {inspeccionadas > 0 ? `, pero ${inspeccionadas === 1 ? 'la instalación inspeccionada dejará' : `las ${inspeccionadas} instalaciones inspeccionadas dejarán`} de contar para el sello del establecimiento` : ''}.
+                  </li>
+                </ul>
+              </div>
+              {modalError && <div style={errorBox}>⚠️ {modalError}</div>}
+              <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                <Button variant="secondary" onClick={() => setAEliminar(null)} disabled={busy}>Cancelar</Button>
+                <Button variant="danger" onClick={handleEliminar} loading={busy}>Sí, eliminar</Button>
+              </div>
             </div>
-          )}
-          <Input
-            label="Nombre del Establecimiento"
-            value={editData.nombre}
-            onChange={e => setEditData(prev => ({ ...prev, nombre: e.target.value }))}
-            required
-          />
-          <Input
-            label="Dirección"
-            value={editData.direccion}
-            onChange={e => setEditData(prev => ({ ...prev, direccion: e.target.value }))}
-            required
-          />
-          <Input
-            label="Comuna"
-            value={editData.comuna}
-            onChange={e => setEditData(prev => ({ ...prev, comuna: e.target.value }))}
-          />
-          <Input
-            label="Propietario / Representante"
-            value={editData.nombre_propietario}
-            onChange={e => setEditData(prev => ({ ...prev, nombre_propietario: e.target.value }))}
-            required
-          />
-          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
-            <Button type="button" variant="secondary" onClick={() => setEditModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" loading={editing}>
-              Guardar Cambios
-            </Button>
+          );
+        })()}
+      </Modal>
+
+      {/* Editar establecimiento */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar establecimiento">
+        <form onSubmit={handleEdit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {modalError && <div style={errorBox}>⚠️ {modalError}</div>}
+          <Input label="Nombre del establecimiento" value={editData.nombre} onChange={(e) => setEditData((p) => ({ ...p, nombre: e.target.value }))} required />
+          <Input label="Dirección" value={editData.direccion} onChange={(e) => setEditData((p) => ({ ...p, direccion: e.target.value }))} required />
+          <Input label="Comuna" value={editData.comuna} onChange={(e) => setEditData((p) => ({ ...p, comuna: e.target.value }))} />
+          <Input label="Propietario / representante" value={editData.nombre_propietario} onChange={(e) => setEditData((p) => ({ ...p, nombre_propietario: e.target.value }))} required />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button type="submit" loading={busy}>Guardar cambios</Button>
           </div>
         </form>
       </Modal>

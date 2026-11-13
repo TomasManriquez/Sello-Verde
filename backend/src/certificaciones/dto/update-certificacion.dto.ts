@@ -1,5 +1,7 @@
 import { IsEnum, IsOptional, IsString, IsDateString, IsNumber, IsArray, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+import { IsRut } from '../../common/validators/is-rut.decorator';
+import { formatearRut } from '../../common/rut.util';
 import { TipoSello } from '../../common/enums';
 import { CreateDefectoDto } from './create-certificacion.dto';
 
@@ -11,6 +13,10 @@ export class UpdateCertificacionDto {
   @IsOptional()
   @IsNumber()
   instalacion_id?: number;
+
+  @IsOptional()
+  @IsNumber()
+  certificador_id?: number;
 
   @IsOptional()
   @IsEnum(TipoSello)
@@ -25,7 +31,8 @@ export class UpdateCertificacionDto {
   entidad_certificadora?: string;
 
   @IsOptional()
-  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? formatearRut(value) || undefined : value))
+  @IsRut()
   rut_inspector?: string;
 
   @IsOptional()

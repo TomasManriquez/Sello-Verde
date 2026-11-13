@@ -15,6 +15,7 @@ import { Certificacion } from '../../certificaciones/entities/certificacion.enti
 import { Documento } from '../../documentos/entities/documento.entity';
 import { HitoTC6 } from './hito-tc6.entity';
 import { Alerta } from '../../alertas/entities/alerta.entity';
+import { Empresa } from '../../empresas/entities/empresa.entity';
 
 @Entity('expedientes')
 export class Expediente {
@@ -28,6 +29,15 @@ export class Expediente {
   @JoinColumn({ name: 'establecimiento_id' })
   establecimiento: Establecimiento;
 
+  /** Empresa contratista (fuente de verdad). Los campos de texto de abajo son el dato anterior. */
+  @Column({ nullable: true })
+  empresa_id: number;
+
+  @ManyToOne(() => Empresa, (empresa) => empresa.expedientes, { nullable: true })
+  @JoinColumn({ name: 'empresa_id' })
+  empresa: Empresa;
+
+  /** @deprecated Dato anterior a la entidad Empresa; se conserva hasta verificar el rescate de datos */
   @Column({ nullable: true })
   empresa_instaladora: string;
 

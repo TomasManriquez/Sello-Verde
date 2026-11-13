@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ExpedientesService } from './expedientes.service';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
+import { AsignarEmpresaDto } from './dto/asignar-empresa.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -22,6 +23,12 @@ export class ExpedientesController {
   @Get()
   findAll() {
     return this.service.findAll();
+  }
+
+  // Asigna una empresa a varios establecimientos (inicia la gestión si aún no la tienen)
+  @Post('asignar-empresa')
+  asignarEmpresa(@Body() dto: AsignarEmpresaDto) {
+    return this.service.asignarEmpresaEnBloque(dto.establecimiento_ids, dto.empresa_id);
   }
 
   @Get(':id')

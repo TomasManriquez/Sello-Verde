@@ -1,0 +1,6 @@
+# Las dependencias se instalan dentro de la imagen (las de Windows no sirven en Linux)
+node_modules
+dist
+*.tsbuildinfo
+# Archivos subidos en local: en el contenedor viven en el volumen backend_uploads
+uploads

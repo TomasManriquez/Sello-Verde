@@ -18,7 +18,6 @@ export default function LoginPage() {
     setError(null);
     try {
       const res = await authApi.login(email, password);
-      console.info('el token:', res.access_token);
       setToken(res.access_token);
       router.replace('/dashboard');
     } catch (err) {
@@ -107,7 +106,7 @@ export default function LoginPage() {
               '🟢  Gestión del ciclo de vida completo',
               '⏱  Control de plazos críticos normativos',
               '📋  Repositorio digital de expedientes',
-              '🔔  Alertas automáticas de vencimiento',
+              '📅  Vencimientos calculados por instalación',
             ].map(item => (
               <div
                 key={item}

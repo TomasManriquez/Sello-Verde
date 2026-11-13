@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ILike, IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Usuario } from '../../auth/entities/usuario.entity';
 import { Establecimiento } from '../../establecimientos/entities/establecimiento.entity';
@@ -9,7 +9,10 @@ import { Instalacion } from '../../instalaciones/entities/instalacion.entity';
 import { Expediente } from '../../expedientes/entities/expediente.entity';
 import { Certificacion } from '../../certificaciones/entities/certificacion.entity';
 import { Defecto } from '../../certificaciones/entities/defecto.entity';
-import { Alerta } from '../../alertas/entities/alerta.entity';
+import { Empresa } from '../../empresas/entities/empresa.entity';
+import { Certificador } from '../../certificadores/entities/certificador.entity';
+import { CATALOGO_ESTABLECIMIENTOS } from '../../catalogo/catalogo-establecimientos.data';
+import { formatearRut, tieneFormatoRut } from '../../common/rut.util';
 import {
   EstadoGeneral,
   EstadoTC6,
@@ -17,8 +20,6 @@ import {
   TipoGas,
   Abastecimiento,
   ZonaAbastecimiento,
-  TipoAlerta,
-  EstadoAlerta,
   TipoDefecto,
 } from '../../common/enums';
 
@@ -41,14 +42,22 @@ export class SeedService implements OnApplicationBootstrap {
     private certificacionRepo: Repository<Certificacion>,
     @InjectRepository(Defecto)
     private defectoRepo: Repository<Defecto>,
-    @InjectRepository(Alerta)
-    private alertaRepo: Repository<Alerta>,
+    @InjectRepository(Empresa)
+    private empresaRepo: Repository<Empresa>,
+    @InjectRepository(Certificador)
+    private certificadorRepo: Repository<Certificador>,
   ) { }
 
   async onApplicationBootstrap() {
+    await this.normalizarEstadosLegados();
+    await this.sembrarSiCorresponde();
+    await this.migrarEmpresasYCertificadores();
+  }
 
+  private async sembrarSiCorresponde() {
     if (process.env.NODE_ENV !== 'development') {
       await this.initialSetup();
+      await this.sembrarCatalogo();
       this.logger.log('Skipping database seeding in non-development environment.');
       return;
     }
@@ -64,8 +73,125 @@ export class SeedService implements OnApplicationBootstrap {
     await this.seed();
     this.logger.log('✅ Database seeded successfully!');
   }
+  /**
+   * Rescata los datos de texto anteriores: crea las empresas y los certificadores a partir de lo
+   * escrito en expedientes e inspecciones y los enlaza. Es idempotente (solo procesa filas sin enlazar).
+   * Agrupa por RUT; si no hay RUT, por nombre. Lo que no se puede unir solo (el mismo nombre con RUT
+   * distintos, por ejemplo) queda separado y se fusiona desde "Empresas y certificadores".
+   */
+  private async migrarEmpresasYCertificadores() {
+    // Un RUT válido se normaliza a "12.345.678-9"; si no lo es se conserva tal cual para poder corregirlo
+    const rutDe = (raw?: string | null) => {
+      const t = (raw ?? '').trim();
+      if (!t) return null;
+      return tieneFormatoRut(t) ? formatearRut(t) : t;
+    };
+    const comoPatron = (texto: string) => ILike(texto.replace(/[%_\\]/g, '\\$&'));
+
+    // ── Empresas (expedientes) ──
+    const expedientes = await this.expedienteRepo.find({ where: { empresa_id: IsNull() } });
+    const empresas = new Map<string, Empresa>();
+    let empresasNuevas = 0;
+    let expedientesEnlazados = 0;
+    for (const exp of expedientes) {
+      const nombre = (exp.empresa_instaladora ?? '').trim();
+      const rut = rutDe(exp.rut_empresa);
+      if (!nombre && !rut) continue;
+
+      const clave = rut ? `rut:${rut}` : `nombre:${nombre.toLowerCase()}`;
+      let empresa = empresas.get(clave);
+      if (!empresa) {
+        empresa =
+          (rut
+            ? await this.empresaRepo.findOne({ where: { rut } })
+            : await this.empresaRepo.findOne({ where: { razon_social: comoPatron(nombre) } })) ?? undefined;
+        if (!empresa) {
+          empresa = await this.empresaRepo.save(
+            this.empresaRepo.create({
+              rut: rut ?? undefined,
+              razon_social: nombre || `Empresa RUT ${rut}`,
+              contacto: exp.contacto_empresa || undefined,
+              telefono: exp.telefono_empresa || undefined,
+              email: exp.email_empresa || undefined,
+            }),
+          );
+          empresasNuevas++;
+        }
+        empresas.set(clave, empresa);
+      }
+      await this.expedienteRepo.update(exp.id, { empresa_id: empresa.id });
+      expedientesEnlazados++;
+    }
+
+    // ── Certificadores (inspecciones) ──
+    const certificaciones = await this.certificacionRepo.find({ where: { certificador_id: IsNull() } });
+    const certificadores = new Map<string, Certificador>();
+    let certificadoresNuevos = 0;
+    let inspeccionesEnlazadas = 0;
+    for (const cert of certificaciones) {
+      const nombre = (cert.nombre_inspector ?? '').trim();
+      const rut = rutDe(cert.rut_inspector);
+      if (!nombre && !rut) continue;
+
+      const clave = rut ? `rut:${rut}` : `nombre:${nombre.toLowerCase()}`;
+      let certificador = certificadores.get(clave);
+      if (!certificador) {
+        certificador =
+          (rut
+            ? await this.certificadorRepo.findOne({ where: { rut } })
+            : await this.certificadorRepo.findOne({ where: { nombre: comoPatron(nombre), rut: IsNull() } })) ?? undefined;
+        if (!certificador) {
+          certificador = await this.certificadorRepo.save(
+            this.certificadorRepo.create({
+              rut: rut ?? undefined,
+              nombre: nombre || `Certificador RUT ${rut}`,
+              entidad: (cert.entidad_certificadora ?? '').trim() || undefined,
+            }),
+          );
+          certificadoresNuevos++;
+        }
+        certificadores.set(clave, certificador);
+      }
+      await this.certificacionRepo.update(cert.id, { certificador_id: certificador.id });
+      inspeccionesEnlazadas++;
+    }
+
+    if (expedientesEnlazados > 0 || inspeccionesEnlazadas > 0) {
+      this.logger.log(
+        `Rescate de datos: ${empresasNuevas} empresa(s) y ${certificadoresNuevos} certificador(es) creados; ` +
+          `${expedientesEnlazados} expediente(s) y ${inspeccionesEnlazadas} inspección(es) enlazados`,
+      );
+    }
+  }
+
+  /**
+   * `en_certificacion` se reemplazó por `en_regularizacion` (TC6 aprobado ⇒ obras / regularización).
+   * Migra filas existentes; es idempotente (no hace nada si ya no quedan filas legadas).
+   */
+  private async normalizarEstadosLegados() {
+    const desde = EstadoGeneral.EN_CERTIFICACION;
+    const hacia = EstadoGeneral.EN_REGULARIZACION;
+    const est = await this.establecimientoRepo.update({ estado_general: desde }, { estado_general: hacia });
+    const exp = await this.expedienteRepo.update({ estado_general: desde }, { estado_general: hacia });
+    const total = (est.affected ?? 0) + (exp.affected ?? 0);
+    if (total > 0) {
+      this.logger.log(`Estados legados migrados: en_certificacion → en_regularizacion (${total} filas)`);
+    }
+  }
+  /** Carga los establecimientos del SLEP sin gestión; omite los RBD que ya existen (incluso borrados) para no duplicar ni reponer lo eliminado. */
+  private async sembrarCatalogo() {
+    const existentes = await this.establecimientoRepo.find({ select: ['rbd'], withDeleted: true });
+    const rbds = new Set(existentes.map((e) => e.rbd.split('-')[0]));
+    const nuevos = CATALOGO_ESTABLECIMIENTOS.filter((c) => !rbds.has(c.rbd));
+    if (nuevos.length === 0) return;
+    await this.establecimientoRepo.save(
+      nuevos.map((c) => this.establecimientoRepo.create({ ...c, region: 'Los Lagos' })),
+    );
+    this.logger.log(`Catálogo SLEP: ${nuevos.length} establecimientos cargados.`);
+  }
+
 //
-// Se extrae la logica de creacion del usuario administrador 
+// Se extrae la logica de creacion del usuario administrador
 //
   private async initialSetup() {
 
@@ -77,11 +203,21 @@ export class SeedService implements OnApplicationBootstrap {
     });
 
     if (existingAdmin) {
-      this.logger.log(`Admin user ${adminEmail} already exists, skipping creation.`);
+      // La cuenta del seed es la única con permisos totales (admin: leer, escribir y eliminar): si alguien le bajó el rol o la desactivó, se repara.
+      if (existingAdmin.rol !== 'admin' || !existingAdmin.activo) {
+        await this.usuarioRepo.update(existingAdmin.id, { rol: 'admin', activo: true });
+        this.logger.warn(`Admin user ${adminEmail} restaurado a rol admin activo.`);
+      } else {
+        this.logger.log(`Admin user ${adminEmail} already exists, skipping creation.`);
+      }
       return;
     }
 
       // Si no existe, lo creamos
+    // Solo desarrollo usa la contraseña de ejemplo: en producción una variable vacía no debe dejar un admin conocido
+    if (!process.env.ADMIN_PASSWORD && process.env.NODE_ENV === 'production') {
+      throw new Error('ADMIN_PASSWORD es obligatoria en producción');
+    }
     const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'slep2024', 10);
     const admin = await this.usuarioRepo.save(
       this.usuarioRepo.create({
@@ -290,7 +426,7 @@ export class SeedService implements OnApplicationBootstrap {
       }),
     );
 
-    // ---- EN_CERTIFICACION ----
+    // ---- EN_REGULARIZACION ----
     // Colegio Particular N° 244 Madre de Dios (5 locales)
     const madreDeDios = await this.establecimientoRepo.save(
       this.establecimientoRepo.create({
@@ -300,7 +436,7 @@ export class SeedService implements OnApplicationBootstrap {
         nombre_propietario: 'SLEP Llanquihue',
         comuna: 'Frutillar',
         region: 'Los Lagos',
-        estado_general: EstadoGeneral.EN_CERTIFICACION,
+        estado_general: EstadoGeneral.EN_REGULARIZACION,
         cantidad_locales: 5,
       }),
     );
@@ -732,7 +868,7 @@ export class SeedService implements OnApplicationBootstrap {
         empresa_instaladora: 'Seguridad Gas Austral',
         rut_empresa: '79.456.789-0',
         estado_tc6: EstadoTC6.TC6_APROBADO,
-        estado_general: EstadoGeneral.EN_CERTIFICACION,
+        estado_general: EstadoGeneral.EN_REGULARIZACION,
         monto_presupuesto: 7500000,
         monto_ejecutado: 7500000,
         fecha_inicio: hace6Meses,
@@ -898,88 +1034,6 @@ export class SeedService implements OnApplicationBootstrap {
 
     this.logger.log('Created defectos');
 
-    // ========================
-    // 8. ALERTAS
-    // ========================
-    const alertas = [];
-
-    // Sello Verde alerts (2 years = 730 days from inspection)
-    alertas.push(
-      this.alertaRepo.create({
-        expediente_id: expPhilippi.id,
-        certificacion_id: certPhilippi.id,
-        instalacion_id: instalacionPhilippi.id,
-        tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: addDays(fechaInspeccionPhilippi, 730),
-        mensaje: `Escuela Bernardo Philippi — Casino principal — Sello Verde vence el ${addDays(fechaInspeccionPhilippi, 730).toLocaleDateString('es-CL')}`,
-      }),
-    );
-
-    alertas.push(
-      this.alertaRepo.create({
-        expediente_id: expLichaf.id,
-        certificacion_id: certLichaf.id,
-        instalacion_id: instalacionLichaf.id,
-        tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: addDays(fechaInspeccionLichaf, 730),
-        mensaje: `Liceo Industrial LICHAF — Casino central — Sello Verde vence el ${addDays(fechaInspeccionLichaf, 730).toLocaleDateString('es-CL')}`,
-      }),
-    );
-
-    alertas.push(
-      this.alertaRepo.create({
-        expediente_id: expInstituto.id,
-        certificacion_id: certInstituto.id,
-        instalacion_id: instalacionInstituto.id,
-        tipo: TipoAlerta.VENCIMIENTO_SELLO_VERDE,
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: addDays(fechaInspeccionInstituto, 730),
-        mensaje: `Instituto Alemán de Frutillar — Zona casino — Sello Verde vence el ${addDays(fechaInspeccionInstituto, 730).toLocaleDateString('es-CL')}`,
-      }),
-    );
-
-    // Sello Rojo/Amarillo alerts (90 days from inspection)
-    alertas.push(
-      this.alertaRepo.create({
-        expediente_id: expGreenCollege.id,
-        certificacion_id: certGreenCollege.id,
-        instalacion_id: instalacionGreenCollege.id,
-        tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: addDays(fechaInspeccionGreen, 90),
-        mensaje: `⚠️ URGENTE: Plazo 90 días Green College vence el ${addDays(fechaInspeccionGreen, 90).toLocaleDateString('es-CL')}`,
-      }),
-    );
-
-    alertas.push(
-      this.alertaRepo.create({
-        expediente_id: expMontessori.id,
-        certificacion_id: certMontessori.id,
-        instalacion_id: instalacionMontessori.id,
-        tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: addDays(fechaInspeccionMontessori, 90),
-        mensaje: `Plazo 90 días Montessori vence el ${addDays(fechaInspeccionMontessori, 90).toLocaleDateString('es-CL')}`,
-      }),
-    );
-
-    alertas.push(
-      this.alertaRepo.create({
-        expediente_id: expLosLinares.id,
-        certificacion_id: certLosLinares.id,
-        instalacion_id: instalacionLosLinares.id,
-        tipo: TipoAlerta.PLAZO_REGULARIZACION_90D,
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: addDays(fechaInspeccionLinares, 90),
-        mensaje: `Plazo 90 días Los Linares vence el ${addDays(fechaInspeccionLinares, 90).toLocaleDateString('es-CL')}`,
-      }),
-    );
-
-    await this.alertaRepo.save(alertas);
-    this.logger.log('Created alertas');
-
     this.logger.log('🎉 Seed complete! Summary:');
     this.logger.log('  - 1 admin user (admin@slep.cl / slep2024)');
     this.logger.log('  - 13 establecimientos');
@@ -989,8 +1043,7 @@ export class SeedService implements OnApplicationBootstrap {
     this.logger.log('  - 2 sello_amarillo (Montessori, Los Linares)');
     this.logger.log('  - 2 en_levantamiento (Mario Pérez, Paraguay)');
     this.logger.log('  - 2 sin_gestion (Colonia San Martín, Carlos Springer)');
-    this.logger.log('  - 1 en_certificacion (Madre de Dios - 5 locales)');
+    this.logger.log('  - 1 en_regularizacion (Madre de Dios - 5 locales)');
     this.logger.log('  - 6 certificaciones with defectos');
-    this.logger.log('  - 6 alertas auto-generated');
   }
 }

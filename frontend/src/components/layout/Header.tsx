@@ -9,9 +9,15 @@ import { useAuth } from '@/hooks/useAuth';
 const BREADCRUMB_MAP: Record<string, string> = {
   '/dashboard':       'Tablero',
   '/establecimientos':'Establecimientos',
-  '/expedientes':     'Expedientes',
-  '/alertas':         'Alertas',
+  '/vencimientos':    'Vencimientos',
+  '/empresas':        'Empresas y certificadores',
   '/login':           'Iniciar Sesión',
+};
+
+const SEGMENT_LABELS: Record<string, string> = {
+  expedientes: 'Establecimientos',
+  certificacion: 'Registrar inspección',
+  anexo2: 'Levantamiento (Anexo 2)',
 };
 
 function buildBreadcrumbs(pathname: string): { label: string; href: string }[] {
@@ -22,7 +28,7 @@ function buildBreadcrumbs(pathname: string): { label: string; href: string }[] {
   for (const seg of segments) {
     path += '/' + seg;
     const label = BREADCRUMB_MAP[path] ??
-      (seg.match(/^\d+$/) ? `#${seg}` : seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' '));
+      (seg.match(/^\d+$/) ? 'Ficha' : SEGMENT_LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' '));
     crumbs.push({ label, href: path });
   }
   return crumbs;

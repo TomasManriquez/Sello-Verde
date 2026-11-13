@@ -8,12 +8,16 @@ import {
   Param,
   Query,
   ParseIntPipe,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { EstablecimientosService } from './establecimientos.service';
 import { CreateEstablecimientoDto } from './dto/create-establecimiento.dto';
 import { CreateLocalDto } from './dto/create-local.dto';
+import { ExportEstablecimientosDto } from './dto/export-establecimientos.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Capacidad } from '../auth/capacidades';
 import { EstadoGeneral } from '../common/enums';
 
 @UseGuards(JwtAuthGuard)
@@ -33,6 +37,19 @@ export class EstablecimientosController {
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
+  }
+
+  // Reporte Excel de los establecimientos seleccionados (una sola hoja)
+  @Capacidad('read')
+  @Post('export')
+  async exportar(@Body() dto: ExportEstablecimientosDto, @Res() res: Response) {
+    const buffer = await this.service.exportarExcel(dto.ids);
+    const hoy = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="establecimientos_${hoy}.xlsx"`,
+    });
+    res.send(buffer);
   }
 
   @Post()

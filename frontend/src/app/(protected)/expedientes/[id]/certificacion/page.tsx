@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { CertificacionForm } from '@/components/forms/CertificacionForm';
 import { Button } from '@/components/ui/Button';
 import { expedientesApi, Expediente } from '@/lib/api';
@@ -10,6 +10,7 @@ export default function CertificacionPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
+  const instalacionParam = Number(useSearchParams().get('instalacion')) || undefined;
 
   const [expediente, setExpediente] = useState<Expediente | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,12 +31,16 @@ export default function CertificacionPage() {
     );
   }
 
+  // La ficha del establecimiento es la vista única; /expedientes/[id] solo redirige hacia ella
+  const volverHref = expediente?.establecimiento_id ? `/establecimientos/${expediente.establecimiento_id}` : `/expedientes/${id}`;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+    // Columna centrada: encabezado y formulario comparten el mismo ancho
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: '800px', width: '100%', margin: '0 auto' }}>
       {/* Page Header */}
       <div>
-        <Button onClick={() => router.push(`/expedientes/${id}`)} variant="ghost" size="sm" style={{ paddingLeft: 0, marginBottom: 'var(--space-2)' }}>
-          ← Volver a Expediente
+        <Button onClick={() => router.push(volverHref)} variant="ghost" size="sm" style={{ paddingLeft: 0, marginBottom: 'var(--space-2)' }}>
+          ← Volver al establecimiento
         </Button>
         <h1 style={{ fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)' }}>
           Registrar Certificación de Gas
@@ -52,8 +57,9 @@ export default function CertificacionPage() {
         <CertificacionForm
           expedienteId={id}
           establecimientoId={expediente?.establecimiento_id ?? 0}
+          instalacionInicial={instalacionParam}
           onComplete={() => {
-            router.push(`/expedientes/${id}`);
+            router.push(volverHref);
           }}
         />
       </div>

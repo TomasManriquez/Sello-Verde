@@ -1,3 +1,6 @@
+import { Transform } from 'class-transformer';
+import { IsRut } from '../../common/validators/is-rut.decorator';
+import { formatearRut } from '../../common/rut.util';
 import {
   IsString,
   IsOptional,
@@ -11,12 +14,18 @@ export class CreateExpedienteDto {
   @IsNumber()
   establecimiento_id: number;
 
+  /** Empresa contratista (entidad Empresa) */
+  @IsOptional()
+  @IsNumber()
+  empresa_id?: number;
+
   @IsOptional()
   @IsString()
   empresa_instaladora?: string;
 
   @IsOptional()
-  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? formatearRut(value) || undefined : value))
+  @IsRut()
   rut_empresa?: string;
 
   @IsOptional()

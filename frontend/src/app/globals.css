@@ -557,28 +557,6 @@ tbody td {
   margin-top: var(--space-1);
 }
 
-/* ── Alert Chip ─────────────────────────────────────────────── */
-.alert-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  font-size: var(--text-xs);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: all var(--transition-interactive);
-}
-.alert-chip:hover {
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
-}
-.alert-chip-urgent { border-color: var(--color-rojo);     background: var(--color-rojo-bg); }
-.alert-chip-warn   { border-color: var(--color-amarillo); background: var(--color-amarillo-bg); }
-.alert-chip-ok     { border-color: var(--color-verde);    background: var(--color-verde-bg); }
-
 /* ── TC6 Stepper ────────────────────────────────────────────── */
 .stepper {
   display: flex;
@@ -996,9 +974,13 @@ tbody td {
   justify-content: center;
 }
 .nav-label { transition: opacity var(--transition-slow); }
-.sidebar.collapsed .nav-label {
-  opacity: 0;
-  pointer-events: none;
+@media (min-width: 769px) {
+  /* Colapsada (64px): solo iconos, centrados. En móvil el menú siempre abre completo. */
+  .sidebar.collapsed .nav-label { display: none; }
+  .sidebar.collapsed > div,
+  .sidebar.collapsed > nav { padding-left: 10px !important; padding-right: 10px !important; }
+  .sidebar.collapsed > div:first-child { justify-content: center; gap: 0 !important; }
+  .sidebar.collapsed .nav-link { justify-content: center; gap: 0; padding: var(--space-3) 0; }
 }
 
 /* ── Empty state ────────────────────────────────────────────── */
@@ -1198,4 +1180,180 @@ tbody td {
 .inline-table select:focus {
   background: var(--color-primary-muted);
   outline: 1px solid var(--color-primary);
+}
+
+/* ── Ficha única de establecimiento ─────────────────────────── */
+.hub-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 2.2fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .hub-grid { grid-template-columns: 1fr; }
+}
+
+/* Ficha: contenido (tabs) a la izquierda, detalles de consulta a la derecha */
+.ficha-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .ficha-grid { grid-template-columns: 1fr; }
+}
+
+/* Etapas: una barra fina por etapa; la etapa actual lleva el nombre en negrita */
+.etapas {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.etapa { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.etapa-barra { height: 4px; border-radius: 2px; background: var(--color-border-strong); }
+.etapa-nombre {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.etapa.hecha .etapa-barra, .etapa.actual .etapa-barra { background: var(--color-primary); }
+.etapa.hecha .etapa-nombre { color: var(--color-text); }
+.etapa.actual .etapa-nombre { color: var(--color-primary); font-weight: 700; }
+.etapa.actual.tono-rojo .etapa-barra { background: var(--color-rojo); }
+.etapa.actual.tono-rojo .etapa-nombre { color: var(--color-rojo); }
+.etapa.actual.tono-amarillo .etapa-barra { background: var(--color-amarillo); }
+.etapa.actual.tono-amarillo .etapa-nombre { color: var(--color-amarillo); }
+
+/* Siguiente paso + plazo */
+.banner-paso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4) var(--space-8);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+.banner-paso.urgente  { border-color: var(--color-rojo);     background: var(--color-rojo-bg); }
+.banner-paso.atencion { border-color: var(--color-amarillo); background: var(--color-amarillo-bg); }
+.banner-paso.ok       { border-color: var(--color-verde);    background: var(--color-verde-bg); }
+.banner-paso-texto { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.banner-paso-etiqueta {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.banner-paso-titulo { font-family: 'Satoshi', sans-serif; font-size: var(--text-lg); line-height: 1.25; }
+.banner-paso-detalle { font-size: var(--text-sm); color: var(--color-text-muted); }
+.banner-plazo { flex: 0 1 280px; min-width: 220px; display: flex; flex-direction: column; gap: var(--space-2); }
+.banner-plazo-dias {
+  font-family: 'Satoshi', sans-serif;
+  font-weight: 900;
+  font-size: var(--text-2xl);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.banner-plazo-barra { height: 8px; border-radius: 4px; background: var(--color-border-strong); overflow: hidden; }
+.banner-plazo-barra > div { height: 100%; }
+.banner-plazo .verde, .banner-plazo-barra > .verde { color: var(--color-verde); background: var(--color-verde); }
+.banner-plazo .amarillo, .banner-plazo-barra > .amarillo { color: var(--color-amarillo); background: var(--color-amarillo); }
+.banner-plazo .rojo, .banner-plazo-barra > .rojo { color: var(--color-rojo); background: var(--color-rojo); }
+.banner-plazo-dias.verde, .banner-plazo-dias.amarillo, .banner-plazo-dias.rojo { background: none; }
+
+/* ── Tablero: etapas de la cartera ──────────────────────────── */
+.cartera-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--tile-color, var(--color-border-strong));
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-height: 72px;
+  transition: box-shadow var(--transition-interactive), transform var(--transition-interactive);
+}
+.cartera-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.cartera-tile[aria-pressed="true"] {
+  outline: 2px solid var(--tile-color, var(--color-primary));
+  background: var(--color-surface-2);
+}
+.cartera-tile-num {
+  font-family: 'Satoshi', sans-serif;
+  font-weight: 900;
+  font-size: var(--text-xl);
+  line-height: 1;
+  color: var(--tile-color, var(--color-text));
+}
+.cartera-tile-label { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* ── Acciones de fila (tres puntos que se despliegan hacia el costado) ── */
+.acciones-fila {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.acciones-fila-items {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+  transition:
+    max-width 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms ease,
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.acciones-fila.abierto .acciones-fila-items {
+  max-width: 108px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.acciones-icono {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-interactive), color var(--transition-interactive), border-color var(--transition-interactive);
+}
+.acciones-icono:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.acciones-icono.peligro:hover {
+  background: var(--color-rojo-bg);
+  color: var(--color-rojo);
+}
+.acciones-icono:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .acciones-fila-items { transition: none; }
 }

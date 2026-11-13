@@ -10,8 +10,12 @@ import { ExpedientesModule } from './expedientes/expedientes.module';
 import { CertificacionesModule } from './certificaciones/certificaciones.module';
 import { AlertasModule } from './alertas/alertas.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { VencimientosModule } from './vencimientos/vencimientos.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { SeedModule } from './database/seed/seed.module';
+import { EmpresasModule } from './empresas/empresas.module';
+import { CertificadoresModule } from './certificadores/certificadores.module';
+import { CatalogoModule } from './catalogo/catalogo.module';
 
 // Entities
 import { Usuario } from './auth/entities/usuario.entity';
@@ -24,6 +28,8 @@ import { Certificacion } from './certificaciones/entities/certificacion.entity';
 import { Defecto } from './certificaciones/entities/defecto.entity';
 import { Alerta } from './alertas/entities/alerta.entity';
 import { Documento } from './documentos/entities/documento.entity';
+import { Empresa } from './empresas/entities/empresa.entity';
+import { Certificador } from './certificadores/entities/certificador.entity';
 
 @Module({
   imports: [
@@ -46,6 +52,8 @@ import { Documento } from './documentos/entities/documento.entity';
         Defecto,
         Alerta,
         Documento,
+        Empresa,
+        Certificador,
       ],
       synchronize: true, // MVP only — use migrations in production
       logging: process.env.NODE_ENV === 'development',
@@ -68,7 +76,11 @@ import { Documento } from './documentos/entities/documento.entity';
     CertificacionesModule,
     AlertasModule,
     DashboardModule,
+    VencimientosModule,
     DocumentosModule,
+    EmpresasModule,
+    CertificadoresModule,
+    CatalogoModule,
 
     // Seed module - runs on bootstrap if DB is empty
     SeedModule,

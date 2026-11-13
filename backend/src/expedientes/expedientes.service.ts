@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -10,7 +12,9 @@ import { HitoTC6 } from './entities/hito-tc6.entity';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
 import { Alerta } from '../alertas/entities/alerta.entity';
 import { CreateExpedienteDto, UpdateEstadoTC6Dto } from './dto/create-expediente.dto';
-import { EstadoTC6, EstadoGeneral, EstadoAlerta } from '../common/enums';
+import { EstadoTC6, EstadoGeneral } from '../common/enums';
+import { calcularSellos, derivarEstadoGeneral } from '../common/sellos.util';
+import { EmpresasService } from '../empresas/empresas.service';
 
 // TC6 forward transition rules
 const TC6_TRANSITIONS: Record<EstadoTC6, EstadoTC6[]> = {
@@ -41,24 +45,35 @@ export class ExpedientesService {
     private establecimientoRepository: Repository<Establecimiento>,
     @InjectRepository(Alerta)
     private alertaRepository: Repository<Alerta>,
+    @Inject(forwardRef(() => EmpresasService))
+    private empresasService: EmpresasService,
   ) {}
 
   async findAll() {
     const items = await this.expedienteRepository.find({
-      relations: ['establecimiento', 'certificaciones'],
+      relations: [
+        'establecimiento',
+        'establecimiento.locales',
+        'establecimiento.locales.instalaciones',
+        'certificaciones',
+        'empresa',
+      ],
       order: { created_at: 'DESC' },
     });
 
-    const withAlerts = await Promise.all(
-      items.map(async (exp) => {
-        const alertasActivas = await this.alertaRepository.count({
-          where: { expediente_id: exp.id, estado: 'activa' as any },
-        });
-        return { ...exp, alertas_activas: alertasActivas };
-      }),
-    );
+    const conEstado = items.map((exp) => {
+      // Estado derivado de las instalaciones (el campo guardado es solo un caché)
+      const sellos = calcularSellos(exp.establecimiento?.locales, exp.certificaciones);
+      const estado_general = derivarEstadoGeneral({
+        expediente: exp,
+        sellos,
+        certificaciones: exp.certificaciones,
+        locales: exp.establecimiento?.locales,
+      });
+      return { ...exp, estado_general };
+    });
 
-    return { data: withAlerts, message: 'OK', total: withAlerts.length };
+    return { data: conEstado, message: 'OK', total: conEstado.length };
   }
 
   async findOne(id: number) {
@@ -72,7 +87,8 @@ export class ExpedientesService {
         'certificaciones.defectos',
         'certificaciones.local',
         'certificaciones.instalacion',
-        'certificaciones.alertas',
+        'certificaciones.certificador',
+        'empresa',
         'documentos',
         'hitos',
       ],
@@ -83,21 +99,6 @@ export class ExpedientesService {
       throw new NotFoundException(`Expediente #${id} no encontrado`);
     }
 
-    const alertas = await this.alertaRepository.find({
-      where: { expediente_id: id },
-      relations: ['instalacion', 'instalacion.local'],
-      order: { fecha_vencimiento: 'ASC' },
-    });
-
-    // Calcular días restantes para cada alerta
-    const enrichedAlertas = alertas.map((alerta) => {
-      const today = new Date();
-      const expiry = new Date(alerta.fecha_vencimiento);
-      const diffTime = expiry.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return { ...alerta, dias_restantes: diffDays };
-    });
-
     // Normalise nested documents: add the relative URL so the frontend
     // can build the full absolute URL via API_HOST + doc.url
     const documentos = (item.documentos ?? []).map((doc) => {
@@ -106,7 +107,24 @@ export class ExpedientesService {
       return { ...doc, url };
     });
 
-    return { data: { ...item, documentos, alertas: enrichedAlertas }, message: 'OK' };
+    // Sello por instalación y estado general derivado (el peor sello manda)
+    const sellos = calcularSellos(item.establecimiento?.locales, item.certificaciones);
+    const estado_general = derivarEstadoGeneral({
+      expediente: item,
+      sellos,
+      certificaciones: item.certificaciones,
+      locales: item.establecimiento?.locales,
+    });
+
+    return {
+      data: {
+        ...item,
+        estado_general,
+        documentos,
+        sellos_instalaciones: sellos,
+      },
+      message: 'OK',
+    };
   }
 
   async create(dto: CreateExpedienteDto) {
@@ -127,6 +145,10 @@ export class ExpedientesService {
       throw new BadRequestException(
         `El establecimiento ya tiene un expediente activo (#${expedienteExistente.id}). No se pueden crear expedientes duplicados.`,
       );
+    }
+
+    if (dto.empresa_id) {
+      await this.empresasService.findOneOrFail(dto.empresa_id);
     }
 
     const item = this.expedienteRepository.create(dto);
@@ -159,6 +181,10 @@ export class ExpedientesService {
       throw new NotFoundException(`Expediente #${id} no encontrado`);
     }
 
+    if (dto.empresa_id) {
+      await this.empresasService.findOneOrFail(dto.empresa_id);
+    }
+
     Object.assign(item, dto);
     const saved = await this.expedienteRepository.save(item);
 
@@ -188,7 +214,8 @@ export class ExpedientesService {
     item.estado_tc6 = dto.nuevo_estado;
 
     if (dto.nuevo_estado === EstadoTC6.TC6_APROBADO) {
-      item.estado_general = EstadoGeneral.EN_CERTIFICACION;
+      // TC6 aprobado ⇒ el proyecto pasa a obras / regularización (aún sin inspección)
+      item.estado_general = EstadoGeneral.EN_REGULARIZACION;
     } else if (
       item.estado_general === EstadoGeneral.SIN_GESTION ||
       item.estado_general === EstadoGeneral.EN_LEVANTAMIENTO
@@ -241,7 +268,10 @@ export class ExpedientesService {
     // Revert estado_general acorde
     if (estadoAnterior === EstadoTC6.SIN_INICIAR) {
       item.estado_general = EstadoGeneral.EN_LEVANTAMIENTO;
-    } else if (item.estado_general === EstadoGeneral.EN_CERTIFICACION) {
+    } else if (
+      item.estado_general === EstadoGeneral.EN_REGULARIZACION ||
+      item.estado_general === EstadoGeneral.EN_CERTIFICACION // legado
+    ) {
       item.estado_general = EstadoGeneral.EN_PROYECTO;
     }
 
@@ -288,6 +318,49 @@ export class ExpedientesService {
 
     await this.alertaRepository.softDelete ({ expediente_id: In(ids)},);
     await this.expedienteRepository.softDelete(ids);
+  }
+
+  /** Usado por la fusión de empresas: traspasa los expedientes de una empresa a otra. */
+  async reasignarEmpresa(origenId: number, destinoId: number): Promise<number> {
+    const res = await this.expedienteRepository.update({ empresa_id: origenId }, { empresa_id: destinoId });
+    return res.affected ?? 0;
+  }
+
+  /**
+   * Asigna una empresa a varios establecimientos. Si un establecimiento no tiene gestión iniciada,
+   * se crea su expediente con esa empresa; si ya la tiene, se cambia la empresa.
+   */
+  async asignarEmpresaEnBloque(establecimientoIds: number[], empresaId: number) {
+    const empresa = await this.empresasService.findOneOrFail(empresaId);
+
+    let actualizados = 0;
+    let creados = 0;
+    const omitidos: number[] = [];
+
+    for (const establecimientoId of establecimientoIds) {
+      const existente = await this.expedienteRepository.findOne({
+        where: { establecimiento_id: establecimientoId },
+      });
+      if (existente) {
+        if (existente.empresa_id !== empresa.id) {
+          await this.expedienteRepository.update(existente.id, { empresa_id: empresa.id });
+          actualizados++;
+        }
+        continue;
+      }
+      try {
+        await this.create({ establecimiento_id: establecimientoId, empresa_id: empresa.id });
+        creados++;
+      } catch (err) {
+        if (err instanceof NotFoundException) omitidos.push(establecimientoId);
+        else throw err;
+      }
+    }
+
+    return {
+      data: { actualizados, creados, omitidos },
+      message: `${empresa.razon_social}: ${creados} gestión(es) iniciada(s), ${actualizados} actualizada(s)`,
+    };
   }
 
   async remove(id: number) {

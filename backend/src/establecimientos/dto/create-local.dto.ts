@@ -1,8 +1,10 @@
 import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 
 export class CreateLocalDto {
+  // Solo al editar; al crear lo asigna el servidor
+  @IsOptional()
   @IsNumber()
-  numero_local: number;
+  numero_local?: number;
 
   @IsOptional()
   @IsString()

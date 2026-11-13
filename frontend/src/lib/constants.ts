@@ -18,16 +18,33 @@ export const API_HOST = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:300
 export const TOKEN_KEY = 'sv_token';
 
 // ── Estado General ───────────────────────────────────────────
+// Debe reflejar el enum EstadoGeneral del backend (más `tc6_aprobado`, usado solo como
+// etapa TC6 en badges). `en_certificacion` es un valor legado que se muestra igual que
+// `en_regularizacion`.
 export const ESTADO_GENERAL = {
   sin_gestion: 'Sin Gestión',
-  en_proyecto: 'En Proyecto',
-  tc6_aprobado: 'TC6 Aprobado',
+  en_levantamiento: 'En Levantamiento',
+  en_proyecto: 'En Proyecto TC6',
+  en_regularizacion: 'Obras / Regularización',
+  en_certificacion: 'Obras / Regularización',
   sello_verde: 'Sello Verde',
   sello_amarillo: 'Sello Amarillo',
   sello_rojo: 'Sello Rojo',
+  tc6_aprobado: 'TC6 Aprobado',
 } as const;
 
 export type EstadoGeneral = keyof typeof ESTADO_GENERAL;
+
+/** Estados ofrecidos en los filtros (sin duplicados ni valores legados). */
+export const ESTADO_GENERAL_OPCIONES: EstadoGeneral[] = [
+  'sin_gestion',
+  'en_levantamiento',
+  'en_proyecto',
+  'en_regularizacion',
+  'sello_verde',
+  'sello_amarillo',
+  'sello_rojo',
+];
 
 // ── TC6 States ───────────────────────────────────────────────
 export const TC6_ESTADOS = [
@@ -72,6 +89,18 @@ export const ZONA_OPTIONS = [
 ] as const;
 export type Zona = typeof ZONA_OPTIONS[number];
 
+// ── Carpetas de documentos ───────────────────────────────────
+// Claves = valores de CategoriaDocumento en el backend
+export const CATEGORIAS_DOCUMENTO = [
+  { key: 'planos_diseno',      label: 'Planos de diseño',        hint: 'Planos y proyecto de diseño' },
+  { key: 'actas_reparaciones', label: 'Actas de reparaciones',   hint: 'Actas de obras y reparaciones' },
+  { key: 'memorias_tecnicas',  label: 'Memorias técnicas',       hint: 'Memorias de cálculo y técnicas' },
+  { key: 'certificados_sec',   label: 'Certificados SEC',        hint: 'Certificados, TC6 aprobado y resoluciones' },
+  { key: 'otros',              label: 'Otros documentos',        hint: 'Todo lo que no calza en las demás carpetas' },
+] as const;
+
+export type CategoriaDocumento = typeof CATEGORIAS_DOCUMENTO[number]['key'];
+
 // ── Defectos Anexo 3 ─────────────────────────────────────────
 export const DEFECTOS_ANEXO3 = [
   { id: 'fugas_artefactos',  label: 'Fugas de gas en artefactos' },
@@ -85,28 +114,13 @@ export const DEFECTOS_ANEXO3 = [
 
 export type DefectoId = typeof DEFECTOS_ANEXO3[number]['id'];
 
-// ── Alerta Estado ────────────────────────────────────────────
-export const ALERTA_ESTADOS = {
-  activa:      'Activa',
-  notificada:  'Notificada',
-  resuelta:    'Resuelta',
-} as const;
-
-export type AlertaEstado = keyof typeof ALERTA_ESTADOS;
-
-// ── Alerta Tipo ──────────────────────────────────────────────
-export const ALERTA_TIPOS = {
-  vencimiento_sello:   'Vencimiento Sello',
-  plazo_regularizacion:'Plazo Regularización',
-  tc6_pendiente:       'TC6 Pendiente',
-} as const;
-
-export type AlertaTipo = keyof typeof ALERTA_TIPOS;
-
 // ── Badge color map ──────────────────────────────────────────
 export const ESTADO_BADGE_CLASS: Record<string, string> = {
   sin_gestion:   'badge-gris',
+  en_levantamiento: 'badge-gris',
   en_proyecto:   'badge-primary',
+  en_regularizacion: 'badge-primary',
+  en_certificacion:  'badge-primary',
   tc6_aprobado:  'badge-primary',
   sello_verde:   'badge-verde',
   sello_amarillo:'badge-amarillo',
@@ -114,18 +128,9 @@ export const ESTADO_BADGE_CLASS: Record<string, string> = {
   verde:         'badge-verde',
   amarillo:      'badge-amarillo',
   rojo:          'badge-rojo',
-  activa:        'badge-rojo',
-  notificada:    'badge-amarillo',
-  resuelta:      'badge-verde',
 };
 
 // ── Urgency helpers ──────────────────────────────────────────
-export function getUrgencyClass(daysRemaining: number): string {
-  if (daysRemaining < 30)  return 'alert-chip-urgent';
-  if (daysRemaining < 90)  return 'alert-chip-warn';
-  return 'alert-chip-ok';
-}
-
 export function getUrgencyColor(daysRemaining: number): string {
   if (daysRemaining < 30)  return 'var(--color-rojo)';
   if (daysRemaining < 90)  return 'var(--color-amarillo)';
@@ -133,9 +138,18 @@ export function getUrgencyColor(daysRemaining: number): string {
 }
 
 // ── Date formatting ──────────────────────────────────────────
+/**
+ * Una fecha sin hora ('2026-10-23', columnas `date` de la API) es un día de calendario:
+ * `new Date('2026-10-23')` la toma como UTC y en Chile queda el día anterior.
+ */
+function aFechaLocal(dateStr: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(dateStr);
+}
+
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
+  const d = aFechaLocal(dateStr);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('es-CL', {
     day:   '2-digit',
@@ -146,9 +160,29 @@ export function formatDate(dateStr: string | null | undefined): string {
 
 export function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 9999;
-  const target = new Date(dateStr);
+  const target = aFechaLocal(dateStr);
   const now    = new Date();
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  // Comparar contra el inicio de hoy: así un día de calendario no depende de la hora actual
+  const hoy    = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/** Texto corto que identifica una instalación: "Local 1 · Casino · Cilindros 45 kg". */
+export function instalacionLabel(
+  inst?: {
+    zona_abastecimiento?: string | null;
+    referencia?: string | null;
+    abastecimiento?: string | null;
+    local?: { numero_local: number } | null;
+  } | null,
+): string {
+  if (!inst) return '';
+  return [
+    inst.local ? `Local ${inst.local.numero_local}` : null,
+    inst.zona_abastecimiento,
+    inst.referencia,
+    inst.abastecimiento,
+  ].filter(Boolean).join(' · ');
 }
 
 export function formatBytes(bytes: number, decimals = 2) {

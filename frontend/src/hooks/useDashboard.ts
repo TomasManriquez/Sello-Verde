@@ -1,26 +1,27 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { dashboardApi, DashboardStats, Alerta, ApiError } from '@/lib/api';
+import { dashboardApi, vencimientosApi, DashboardStats, Vencimiento, ApiError } from '@/lib/api';
 
 export function useDashboard() {
-  const [stats, setStats]       = useState<DashboardStats | null>(null);
-  const [alertas, setAlertas]   = useState<Alerta[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [stats, setStats]               = useState<DashboardStats | null>(null);
+  const [vencimientos, setVencimientos] = useState<Vencimiento[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const [s, a] = await Promise.all([
+        const [s, v] = await Promise.all([
           dashboardApi.getStats(),
-          dashboardApi.getProximasAlertas(),
+          vencimientosApi.list(false),
         ]);
         if (!cancelled) {
           setStats(s);
-          setAlertas(a);
+          // El tablero solo muestra lo que pide acción ya: fuera de plazo y próximos 30 días
+          setVencimientos(v.items.filter((i) => i.urgencia === 'fuera_de_plazo' || i.urgencia === 'proximo_30d'));
         }
       } catch (err) {
         if (!cancelled) {
@@ -29,16 +30,9 @@ export function useDashboard() {
           } else {
             setError('Error al cargar el tablero');
           }
-          // Fallback mock data for development
-          setStats({
-            total_ee:      20,
-            sin_gestion:   4,
-            en_proyecto:   8,
-            tc6_aprobado:  3,
-            sello_verde:   5,
-            alertas_activas: 7,
-          });
-          setAlertas([]);
+          // Sin cifras ficticias: si la API falla, el tablero muestra el error (stats queda en null)
+          setStats(null);
+          setVencimientos([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -49,5 +43,5 @@ export function useDashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  return { stats, alertas, loading, error };
+  return { stats, vencimientos, loading, error };
 }

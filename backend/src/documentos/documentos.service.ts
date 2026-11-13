@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Documento } from './entities/documento.entity';
 import { Expediente } from '../expedientes/entities/expediente.entity';
+import { CategoriaDocumento } from '../common/enums';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -73,11 +74,35 @@ export class DocumentosService {
 
   // ── create (with overwrite by original name) ─────────────────
 
+  private resolverCategoria(categoria?: string): CategoriaDocumento {
+    if (categoria === undefined || categoria === null || categoria === '') {
+      return CategoriaDocumento.OTROS;
+    }
+    if (!Object.values(CategoriaDocumento).includes(categoria as CategoriaDocumento)) {
+      throw new BadRequestException(
+        `Categoría inválida. Valores permitidos: ${Object.values(CategoriaDocumento).join(', ')}`,
+      );
+    }
+    return categoria as CategoriaDocumento;
+  }
+
   async create(
     expedienteId: number,
     file: Express.Multer.File,
     descripcion?: string,
+    categoria?: string,
   ) {
+    if (!file) {
+      throw new BadRequestException('Debe adjuntar un archivo en el campo "file"');
+    }
+    let carpeta: CategoriaDocumento;
+    try {
+      carpeta = this.resolverCategoria(categoria);
+    } catch (e) {
+      if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      throw e;
+    }
+
     const expediente = await this.expedienteRepository.findOne({
       where: { id: expedienteId },
     });
@@ -89,11 +114,12 @@ export class DocumentosService {
       throw new NotFoundException(`Expediente #${expedienteId} no encontrado`);
     }
 
-    // Check for existing document with same original name in this expediente
+    // Mismo nombre en la misma carpeta ⇒ se sobreescribe; en otra carpeta es un documento distinto
     const existing = await this.documentoRepository.findOne({
       where: {
         expediente_id: expedienteId,
         nombre_original: file.originalname,
+        categoria: carpeta,
       },
     });
 
@@ -126,6 +152,7 @@ export class DocumentosService {
       tipo_mime: file.mimetype,
       tamano_bytes: file.size,
       descripcion,
+      categoria: carpeta,
     });
 
     const saved = await this.documentoRepository.save(doc);
@@ -150,6 +177,31 @@ export class DocumentosService {
     doc.nombre_original = finalName;
     const saved = await this.documentoRepository.save(doc);
     return { data: this.toDto(saved), message: 'Documento renombrado exitosamente' };
+  }
+
+  // ── cambiarCategoria ─────────────────────────────────────────
+
+  async cambiarCategoria(id: number, categoria?: string) {
+    const doc = await this.findOne(id);
+    const carpeta = this.resolverCategoria(categoria);
+
+    // No puede haber dos documentos con el mismo nombre en una carpeta
+    const duplicado = await this.documentoRepository.findOne({
+      where: {
+        expediente_id: doc.expediente_id,
+        nombre_original: doc.nombre_original,
+        categoria: carpeta,
+      },
+    });
+    if (duplicado && duplicado.id !== doc.id) {
+      throw new BadRequestException(
+        'Ya existe un documento con el mismo nombre en esa carpeta. Renómbralo antes de moverlo.',
+      );
+    }
+
+    doc.categoria = carpeta;
+    const saved = await this.documentoRepository.save(doc);
+    return { data: this.toDto(saved), message: 'Documento movido exitosamente' };
   }
 
   // ── delete ───────────────────────────────────────────────────

@@ -34,3 +34,7 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Respaldos locales y configuración personal
+backup_*.sql
+.mcp.json

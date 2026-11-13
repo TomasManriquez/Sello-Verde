@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Trash } from 'lucide-react';
 import { Establecimiento, Local, Instalacion, localesApi, ApiError } from '@/lib/api';
 import {
   TIPO_GAS_OPTIONS,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 
 interface Anexo2FormProps {
   establecimiento: Establecimiento;
@@ -20,15 +22,36 @@ interface Anexo2FormProps {
 export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }: Anexo2FormProps) {
   // Normalizar locales iniciales: marcar instalaciones existentes con _isNew:false
   const normalize = (ls: Local[]) =>
-    ls.map(l => ({
-      ...l,
-      instalaciones: (l.instalaciones ?? []).map(i => ({ ...i, _isNew: false })),
-    }));
+    [...ls]
+      .sort((a, b) => a.numero_local - b.numero_local)
+      .map(l => ({
+        ...l,
+        instalaciones: (l.instalaciones ?? []).map(i => ({ ...i, _isNew: false })),
+      }));
 
   const [locales, setLocales]   = useState<Local[]>(() => normalize(initialLocales));
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [success, setSuccess]   = useState(false);
+  const [localAEliminar, setLocalAEliminar] = useState<Local | null>(null);
+  const [eliminando, setEliminando]         = useState(false);
+
+  // Elimina el local con sus instalaciones (borrado lógico en el servidor)
+  const confirmarEliminarLocal = async () => {
+    if (!localAEliminar) return;
+    setEliminando(true);
+    setError(null);
+    try {
+      await localesApi.remove(localAEliminar.id);
+      setLocales(prev => prev.filter(l => l.id !== localAEliminar.id));
+      setLocalAEliminar(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo eliminar el local.');
+      setLocalAEliminar(null);
+    } finally {
+      setEliminando(false);
+    }
+  };
 
   // ── Section B handlers ────────────────────────────────────
   const updateLocal = (id: number, field: keyof Local, value: unknown) => {
@@ -48,15 +71,16 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
         local_id: localId,
         tipo_gas: TIPO_GAS_OPTIONS[0],
         abastecimiento: ABASTECIMIENTO_OPTIONS[0],
-        zona: ZONA_OPTIONS[0],
+        zona_abastecimiento: ZONA_OPTIONS[0],
         referencia: '',
-        artefacto: '',
+        artefacto_cilindro: '',
       };
       return { ...l, instalaciones: [...(l.instalaciones ?? []), newInst] };
     }));
   };
 
   const updateInstalacion = (localId: number, instId: number, field: keyof Instalacion, value: string) => {
+    // (los nombres de campo coinciden con el DTO del backend: zona_abastecimiento, artefacto_cilindro)
     setLocales(prev => prev.map(l => {
       if (l.id !== localId) return l;
       return {
@@ -104,12 +128,13 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
 
         if (local.usa_gas && local.instalaciones) {
           for (const inst of local.instalaciones as InstalacionLocal[]) {
+            // Los vacíos se envían como undefined: el backend valida los enums y rechaza ''.
             const payload = {
-              tipo_gas:       inst.tipo_gas,
-              abastecimiento: inst.abastecimiento,
-              zona:           inst.zona,
-              referencia:     inst.referencia,
-              artefacto:      inst.artefacto,
+              tipo_gas:            inst.tipo_gas || undefined,
+              abastecimiento:      inst.abastecimiento || undefined,
+              zona_abastecimiento: inst.zona_abastecimiento || undefined,
+              referencia:          inst.referencia || undefined,
+              artefacto_cilindro:  inst.artefacto_cilindro || undefined,
             };
 
             if (inst._isNew) {
@@ -199,6 +224,7 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                 <th>Nombre Local</th>
                 <th>Dirección Local</th>
                 <th>¿Usa Gas?</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -236,6 +262,17 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                         {local.usa_gas ? 'Sí' : 'No'}
                       </span>
                     </label>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setLocalAEliminar(local)}
+                      style={{ color: 'var(--color-rojo)', minWidth: 44, minHeight: 44 }}
+                      title="Eliminar local"
+                      aria-label={`Eliminar local ${local.numero_local}`}
+                    >
+                      <Trash size={16} aria-hidden="true" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -280,9 +317,10 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                     <tr key={inst.id}>
                       <td>
                         <select
-                          value={inst.tipo_gas}
+                          value={inst.tipo_gas ?? ''}
                           onChange={e => updateInstalacion(local.id, inst.id, 'tipo_gas', e.target.value)}
                         >
+                          <option value="" disabled>— Seleccionar —</option>
                           {TIPO_GAS_OPTIONS.map(o => (
                             <option key={o} value={o}>{o}</option>
                           ))}
@@ -290,9 +328,10 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                       </td>
                       <td>
                         <select
-                          value={inst.abastecimiento}
+                          value={inst.abastecimiento ?? ''}
                           onChange={e => updateInstalacion(local.id, inst.id, 'abastecimiento', e.target.value)}
                         >
+                          <option value="" disabled>— Seleccionar —</option>
                           {ABASTECIMIENTO_OPTIONS.map(o => (
                             <option key={o} value={o}>{o}</option>
                           ))}
@@ -300,9 +339,10 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                       </td>
                       <td>
                         <select
-                          value={inst.zona}
-                          onChange={e => updateInstalacion(local.id, inst.id, 'zona', e.target.value)}
+                          value={inst.zona_abastecimiento ?? ''}
+                          onChange={e => updateInstalacion(local.id, inst.id, 'zona_abastecimiento', e.target.value)}
                         >
+                          <option value="" disabled>— Seleccionar —</option>
                           {ZONA_OPTIONS.map(o => (
                             <option key={o} value={o}>{o}</option>
                           ))}
@@ -310,15 +350,15 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                       </td>
                       <td>
                         <input
-                          value={inst.referencia}
+                          value={inst.referencia ?? ''}
                           onChange={e => updateInstalacion(local.id, inst.id, 'referencia', e.target.value)}
                           placeholder="Descripción de ubicación"
                         />
                       </td>
                       <td>
                         <input
-                          value={inst.artefacto}
-                          onChange={e => updateInstalacion(local.id, inst.id, 'artefacto', e.target.value)}
+                          value={inst.artefacto_cilindro ?? ''}
+                          onChange={e => updateInstalacion(local.id, inst.id, 'artefacto_cilindro', e.target.value)}
                           placeholder="Ej. cocina-calefón"
                         />
                       </td>
@@ -329,7 +369,7 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
                           style={{ color: 'var(--color-rojo)', minWidth: 36, minHeight: 36 }}
                           title="Eliminar instalación"
                         >
-                          ✕
+                          <Trash size={16} aria-hidden="true" />
                         </button>
                       </td>
                     </tr>
@@ -340,6 +380,27 @@ export function Anexo2Form({ establecimiento, locales: initialLocales, onSaved }
           )}
         </section>
       ))}
+
+      <Modal open={localAEliminar !== null} onClose={() => setLocalAEliminar(null)} title="Eliminar local" maxWidth="460px">
+        {localAEliminar && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+              Se eliminará el <strong>Local {localAEliminar.numero_local}{localAEliminar.nombre ? ` — ${localAEliminar.nombre}` : ''}</strong>
+              {(localAEliminar.instalaciones?.length ?? 0) > 0
+                ? <> junto con sus <strong>{localAEliminar.instalaciones!.length} instalación(es)</strong>.</>
+                : '.'}
+              {' '}Las inspecciones ya registradas se conservan en el historial.
+            </p>
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Los cambios sin guardar en este formulario no se ven afectados.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => setLocalAEliminar(null)} disabled={eliminando}>Cancelar</Button>
+              <Button variant="danger" onClick={confirmarEliminarLocal} loading={eliminando}>Sí, eliminar</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Actions */}
       {error && (

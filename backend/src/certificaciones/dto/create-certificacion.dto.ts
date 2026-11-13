@@ -1,17 +1,22 @@
 import { IsEnum, IsOptional, IsString, IsDateString, IsNumber, IsArray, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+import { IsRut } from '../../common/validators/is-rut.decorator';
+import { formatearRut } from '../../common/rut.util';
 import { TipoSello, TipoDefecto } from '../../common/enums';
 
 export class CreateCertificacionDto {
-  /** Local específico que se certifica */
+  /** Opcional y redundante: el local se deduce de la instalación */
   @IsOptional()
   @IsNumber()
   local_id?: number;
 
-  /** Instalación específica que se certifica */
-  @IsOptional()
-  @IsNumber()
-  instalacion_id?: number;
+  /** Instalación que se inspecciona (obligatoria: el sello es por instalación) */
+  @IsNumber({}, { message: 'Debes seleccionar la instalación que se inspeccionó' })
+  instalacion_id: number;
+
+  /** Certificador (entidad Certificador) que validó la instalación */
+  @IsNumber({}, { message: 'Debes seleccionar el certificador que validó la instalación' })
+  certificador_id: number;
 
   @IsOptional()
   @IsEnum(TipoSello)
@@ -26,7 +31,8 @@ export class CreateCertificacionDto {
   entidad_certificadora?: string;
 
   @IsOptional()
-  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? formatearRut(value) || undefined : value))
+  @IsRut()
   rut_inspector?: string;
 
   @IsOptional()

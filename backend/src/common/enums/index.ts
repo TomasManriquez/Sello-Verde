@@ -7,3 +7,4 @@ export * from './zona-abastecimiento.enum';
 export * from './tipo-alerta.enum';
 export * from './estado-alerta.enum';
 export * from './tipo-defecto.enum';
+export * from './categoria-documento.enum';

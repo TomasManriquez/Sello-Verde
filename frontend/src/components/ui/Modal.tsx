@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   open: boolean;
@@ -27,7 +28,9 @@ export function Modal({ open, onClose, title, children, maxWidth = '560px' }: Mo
 
   if (!open) return null;
 
-  return (
+  // Se pinta en <body>: así un modal puede abrirse dentro de otro formulario
+  // (por ejemplo "+ Nueva empresa" dentro de "Iniciar gestión") sin anidar <form>.
+  return createPortal(
     <div
       className="modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -52,6 +55,7 @@ export function Modal({ open, onClose, title, children, maxWidth = '560px' }: Mo
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

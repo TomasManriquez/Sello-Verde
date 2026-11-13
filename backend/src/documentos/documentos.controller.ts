@@ -17,6 +17,7 @@ import { diskStorage } from 'multer';
 import { join } from 'path';
 import { Response } from 'express';
 import { DocumentosService } from './documentos.service';
+import { CategoriaDocumento } from '../common/enums';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import * as fs from 'fs';
 
@@ -33,11 +34,12 @@ const expedienteStorage = diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    // Sanitize the original filename: replace spaces and special chars
+    // Sanitize the original filename: replace spaces and special chars.
+    // Se antepone un prefijo único: el mismo nombre en carpetas distintas no debe pisar el archivo en disco.
     const sanitized = file.originalname
       .replace(/\s+/g, '_')
       .replace(/[^a-zA-Z0-9._\-áéíóúÁÉÍÓÚñÑ]/g, '');
-    cb(null, sanitized);
+    cb(null, `${Date.now()}_${sanitized}`);
   },
 });
 
@@ -54,7 +56,8 @@ export class DocumentosController {
 
   // ── POST /api/expedientes/:expedienteId/documentos ────────────
   // Accepts multipart/form-data with field "file"
-  // If a document with the same original name already exists → overwrites it
+  // Campo opcional "categoria" (carpeta); debe enviarse en el formulario.
+  // If a document with the same original name already exists in that folder → overwrites it
   @Post(':expedienteId/documentos')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -68,8 +71,9 @@ export class DocumentosController {
     @Param('expedienteId', ParseIntPipe) expedienteId: number,
     @UploadedFile() file: Express.Multer.File,
     @Body('descripcion') descripcion?: string,
+    @Body('categoria') categoria?: CategoriaDocumento,
   ) {
-    return this.service.create(expedienteId, file, descripcion);
+    return this.service.create(expedienteId, file, descripcion, categoria);
   }
 }
 
@@ -102,6 +106,16 @@ export class DocumentosItemController {
     @Body('nombre') nombre: string,
   ) {
     return this.service.rename(id, nombre);
+  }
+
+  // ── PATCH /api/documentos/:id/categoria ───────────────────────
+  // Mueve el documento a otra carpeta
+  @Patch(':id/categoria')
+  cambiarCategoria(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('categoria') categoria: CategoriaDocumento,
+  ) {
+    return this.service.cambiarCategoria(id, categoria);
   }
 
   // ── DELETE /api/documentos/:id ────────────────────────────────

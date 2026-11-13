@@ -1,71 +1,48 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Establecimiento } from '../establecimientos/entities/establecimiento.entity';
-import { Alerta } from '../alertas/entities/alerta.entity';
-import { EstadoGeneral, EstadoAlerta } from '../common/enums';
+import { EstadoGeneral } from '../common/enums';
+import { calcularSellos, derivarEstadoGeneral, expedienteActivo } from '../common/sellos.util';
+import { calcularVencimientos, resumirVencimientos } from '../common/vencimientos.util';
 
 @Injectable()
 export class DashboardService {
   constructor(
     @InjectRepository(Establecimiento)
     private establecimientoRepository: Repository<Establecimiento>,
-    @InjectRepository(Alerta)
-    private alertaRepository: Repository<Alerta>,
   ) {}
 
   async getResumen() {
-    const [
-      total_ee,
-      sin_gestion,
-      en_levantamiento,
-      en_proyecto,
-      en_certificacion,
-      sello_verde,
-      sello_rojo,
-      sello_amarillo,
-      en_regularizacion,
-    ] = await Promise.all([
-      this.establecimientoRepository.count(),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.SIN_GESTION },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.EN_LEVANTAMIENTO },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.EN_PROYECTO },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.EN_CERTIFICACION },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.SELLO_VERDE },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.SELLO_ROJO },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.SELLO_AMARILLO },
-      }),
-      this.establecimientoRepository.count({
-        where: { estado_general: EstadoGeneral.EN_REGULARIZACION },
-      }),
-    ]);
-
-    const alertas_activas = await this.alertaRepository.count({
-      where: { estado: EstadoAlerta.ACTIVA },
+    // El estado de cada establecimiento se deriva de sus instalaciones (no del campo guardado)
+    const establecimientos = await this.establecimientoRepository.find({
+      relations: ['locales', 'locales.instalaciones', 'expedientes', 'expedientes.certificaciones'],
     });
 
-    const in30Days = new Date();
-    in30Days.setDate(in30Days.getDate() + 30);
+    const conteo: Partial<Record<EstadoGeneral, number>> = {};
+    for (const est of establecimientos) {
+      const activo = expedienteActivo(est.expedientes);
+      const sellos = calcularSellos(est.locales, activo?.certificaciones);
+      const estado = derivarEstadoGeneral({
+        expediente: activo,
+        sellos,
+        certificaciones: activo?.certificaciones,
+        locales: est.locales,
+      });
+      conteo[estado] = (conteo[estado] ?? 0) + 1;
+    }
+    const total_ee = establecimientos.length;
+    const sin_gestion = conteo[EstadoGeneral.SIN_GESTION] ?? 0;
+    const en_levantamiento = conteo[EstadoGeneral.EN_LEVANTAMIENTO] ?? 0;
+    const en_proyecto = conteo[EstadoGeneral.EN_PROYECTO] ?? 0;
+    const en_regularizacion = conteo[EstadoGeneral.EN_REGULARIZACION] ?? 0;
+    const sello_verde = conteo[EstadoGeneral.SELLO_VERDE] ?? 0;
+    const sello_rojo = conteo[EstadoGeneral.SELLO_ROJO] ?? 0;
+    const sello_amarillo = conteo[EstadoGeneral.SELLO_AMARILLO] ?? 0;
+    // `en_certificacion` es un estado legado que ya no se deriva
+    const en_certificacion = 0;
 
-    const alertas_proximas_30d = await this.alertaRepository.count({
-      where: {
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: LessThanOrEqual(in30Days),
-      },
-    });
+    const vencimientos = resumirVencimientos(calcularVencimientos(establecimientos));
 
     return {
       data: {
@@ -78,35 +55,9 @@ export class DashboardService {
         sello_rojo,
         sello_amarillo,
         en_regularizacion,
-        alertas_activas,
-        alertas_proximas_30d,
+        vencimientos,
       },
       message: 'OK',
     };
-  }
-
-  async getAlertasProximas() {
-    const in30Days = new Date();
-    in30Days.setDate(in30Days.getDate() + 30);
-
-    const alertas = await this.alertaRepository.find({
-      where: {
-        estado: EstadoAlerta.ACTIVA,
-        fecha_vencimiento: LessThanOrEqual(in30Days),
-      },
-      relations: ['expediente', 'expediente.establecimiento', 'instalacion', 'instalacion.local'],
-      order: { fecha_vencimiento: 'ASC' },
-    });
-
-    const withDays = alertas.map((alerta) => {
-      const today = new Date();
-      const expiry = new Date(alerta.fecha_vencimiento);
-      if (isNaN(expiry.getTime())) return { ...alerta, dias_restantes: null };
-      const diffTime = expiry.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return { ...alerta, dias_restantes: diffDays };
-    });
-
-    return { data: withDays, message: 'OK', total: withDays.length };
   }
 }

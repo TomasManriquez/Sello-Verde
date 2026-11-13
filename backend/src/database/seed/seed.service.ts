@@ -11,6 +11,7 @@ import { Certificacion } from '../../certificaciones/entities/certificacion.enti
 import { Defecto } from '../../certificaciones/entities/defecto.entity';
 import { Empresa } from '../../empresas/entities/empresa.entity';
 import { Certificador } from '../../certificadores/entities/certificador.entity';
+import { CATALOGO_ESTABLECIMIENTOS } from '../../catalogo/catalogo-establecimientos.data';
 import { formatearRut, tieneFormatoRut } from '../../common/rut.util';
 import {
   EstadoGeneral,
@@ -56,6 +57,7 @@ export class SeedService implements OnApplicationBootstrap {
   private async sembrarSiCorresponde() {
     if (process.env.NODE_ENV !== 'development') {
       await this.initialSetup();
+      await this.sembrarCatalogo();
       this.logger.log('Skipping database seeding in non-development environment.');
       return;
     }
@@ -176,6 +178,18 @@ export class SeedService implements OnApplicationBootstrap {
       this.logger.log(`Estados legados migrados: en_certificacion → en_regularizacion (${total} filas)`);
     }
   }
+  /** Carga los establecimientos del SLEP sin gestión; omite los RBD que ya existen (incluso borrados) para no duplicar ni reponer lo eliminado. */
+  private async sembrarCatalogo() {
+    const existentes = await this.establecimientoRepo.find({ select: ['rbd'], withDeleted: true });
+    const rbds = new Set(existentes.map((e) => e.rbd.split('-')[0]));
+    const nuevos = CATALOGO_ESTABLECIMIENTOS.filter((c) => !rbds.has(c.rbd));
+    if (nuevos.length === 0) return;
+    await this.establecimientoRepo.save(
+      nuevos.map((c) => this.establecimientoRepo.create({ ...c, region: 'Los Lagos' })),
+    );
+    this.logger.log(`Catálogo SLEP: ${nuevos.length} establecimientos cargados.`);
+  }
+
 //
 // Se extrae la logica de creacion del usuario administrador
 //
@@ -189,7 +203,13 @@ export class SeedService implements OnApplicationBootstrap {
     });
 
     if (existingAdmin) {
-      this.logger.log(`Admin user ${adminEmail} already exists, skipping creation.`);
+      // La cuenta del seed es la única con permisos totales (admin: leer, escribir y eliminar): si alguien le bajó el rol o la desactivó, se repara.
+      if (existingAdmin.rol !== 'admin' || !existingAdmin.activo) {
+        await this.usuarioRepo.update(existingAdmin.id, { rol: 'admin', activo: true });
+        this.logger.warn(`Admin user ${adminEmail} restaurado a rol admin activo.`);
+      } else {
+        this.logger.log(`Admin user ${adminEmail} already exists, skipping creation.`);
+      }
       return;
     }
 

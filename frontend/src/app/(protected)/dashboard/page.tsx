@@ -3,11 +3,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useDashboard } from '@/hooks/useDashboard';
-import { establecimientosApi, Establecimiento } from '@/lib/api';
+import { establecimientosApi, vencimientosApi, Establecimiento, Vencimiento } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { EstablecimientoTable } from '@/components/tables/EstablecimientoTable';
 import { EtapasCartera, EtapaKey, ETAPAS_CARTERA } from '@/components/dashboard/EtapasCartera';
 import { RequiereAccion } from '@/components/dashboard/RequiereAccion';
+import { ComunasYPlazos } from '@/components/dashboard/ComunasYPlazos';
 import { RegistrarInspeccionModal } from '@/components/dashboard/RegistrarInspeccionModal';
 import { puede } from '@/lib/capacidades';
 
@@ -21,11 +22,15 @@ export default function DashboardPage() {
   const [etapa, setEtapa] = useState<EtapaKey | null>(null);
   const [inspeccionOpen, setInspeccionOpen] = useState(false);
 
+  const [plazos, setPlazos] = useState<Vencimiento[]>([]);
+
   useEffect(() => {
     establecimientosApi.list()
       .then(setEstablecimientos)
       .catch(err => setEeError(err.message || 'Error al cargar establecimientos'))
       .finally(() => setEeLoading(false));
+    // Con los sellos verdes incluidos, para el calendario de 6 meses (si falla, queda vacío)
+    vencimientosApi.list(true).then(r => setPlazos(r.items)).catch(() => {});
   }, []);
 
   // Más urgentes primero: el vencimiento más cercano (o ya vencido) arriba; sin vencimiento al final
@@ -71,6 +76,8 @@ export default function DashboardPage() {
 
       {/* 2. Cómo está la cartera */}
       <EtapasCartera stats={stats} loading={statsLoading} selected={etapa} onSelect={setEtapa} />
+
+      <ComunasYPlazos establecimientos={establecimientos} vencimientos={plazos} loading={eeLoading} />
 
       {/* 3. Detalle por establecimiento */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>

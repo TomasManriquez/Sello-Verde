@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Establecimiento } from './entities/establecimiento.entity';
@@ -285,9 +285,21 @@ export class EstablecimientosService {
     return { ...this.enriquecer(item), message: 'OK' };
   }
 
+  // El RBD se guarda sin dígito verificador; el índice único lo hace cumplir (23505 = duplicado).
+  private async guardarUnico(item: Establecimiento) {
+    item.rbd = item.rbd.trim().split('-')[0];
+    try {
+      return await this.establecimientoRepository.save(item);
+    } catch (e: any) {
+      if (e?.code === '23505') {
+        throw new ConflictException(`Ya existe un establecimiento con el RBD ${item.rbd}`);
+      }
+      throw e;
+    }
+  }
+
   async create(dto: CreateEstablecimientoDto) {
-    const item = this.establecimientoRepository.create(dto);
-    const saved = await this.establecimientoRepository.save(item);
+    const saved = await this.guardarUnico(this.establecimientoRepository.create(dto));
     return { data: saved, message: 'Establecimiento creado exitosamente' };
   }
 
@@ -297,7 +309,7 @@ export class EstablecimientosService {
       throw new NotFoundException(`Establecimiento #${id} no encontrado`);
     }
     Object.assign(item, dto);
-    const saved = await this.establecimientoRepository.save(item);
+    const saved = await this.guardarUnico(item);
     return { data: saved, message: 'Establecimiento actualizado exitosamente' };
   }
 
@@ -328,8 +340,16 @@ export class EstablecimientosService {
       throw new NotFoundException(`Establecimiento #${establecimientoId} no encontrado`);
     }
 
+    // El correlativo lo asigna el servidor: siguiente al mayor del establecimiento
+    const { max } = await this.localRepository
+      .createQueryBuilder('l')
+      .select('COALESCE(MAX(l.numero_local), 0)', 'max')
+      .where('l.establecimiento_id = :id', { id: establecimientoId })
+      .getRawOne();
+
     const local = this.localRepository.create({
       ...dto,
+      numero_local: Number(max) + 1,
       establecimiento_id: establecimientoId,
     });
     const saved = await this.localRepository.save(local);

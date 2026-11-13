@@ -4,6 +4,18 @@ import { formatDate, instalacionLabel } from './constants';
 /** Con cuántos días de anticipación se pide reinspeccionar un sello verde (reinspeccionar exige licitar). */
 export const AVISO_REINSPECCION_DIAS = 120;
 
+/** Espejo de PLAZO_REGULARIZACION_DIAS / VIGENCIA_VERDE_DIAS del backend (sellos.util.ts). */
+const PLAZO_REGULARIZACION_DIAS = 90;
+const VIGENCIA_VERDE_DIAS = 730;
+
+export interface Plazo {
+  dias: number;
+  /** Duración total del plazo, para la barra de avance */
+  total: number;
+  inicio: string | null;
+  fin: string | null;
+}
+
 export type AccionKind =
   | 'iniciar_gestion'
   | 'agregar_local'
@@ -15,15 +27,21 @@ export interface ProximoPaso {
   tono: 'urgente' | 'atencion' | 'info' | 'ok';
   titulo: string;
   detalle?: string;
+  /** Plazo de la instalación más urgente (regularización o vencimiento del verde) */
+  plazo?: Plazo;
   /** Se muestra como la acción primaria de la ficha */
-  accion?: {
-    kind: AccionKind;
-    label: string;
-    instalacionId?: number;
-    localId?: number;
-    /** Solo para `avanzar_tc6` */
-    estadoTc6?: string;
-  };
+  accion?: Accion;
+  /** Segunda respuesta posible al mismo paso (botón secundario) */
+  alternativa?: Accion;
+}
+
+interface Accion {
+  kind: AccionKind;
+  label: string;
+  instalacionId?: number;
+  localId?: number;
+  /** Solo para `avanzar_tc6` */
+  estadoTc6?: string;
 }
 
 interface Entrada {
@@ -35,6 +53,7 @@ interface Entrada {
 const TC6_SIGUIENTE: Record<string, { estado: string; label: string } | undefined> = {
   sin_iniciar: { estado: 'en_elaboracion', label: 'Iniciar elaboración del TC6' },
   en_elaboracion: { estado: 'ingresado_sec', label: 'Marcar TC6 ingresado a la SEC' },
+  ingresado_sec: { estado: 'tc6_aprobado', label: 'Marcar TC6 aprobado' },
   observado: { estado: 'tc6_aprobado', label: 'Marcar TC6 aprobado' },
 };
 
@@ -101,6 +120,7 @@ export function calcularProximoPaso(ee: Establecimiento): ProximoPaso {
       detalle: e.sello.plazo_vencido
         ? `El plazo de regularización venció hace ${Math.abs(dias(e))} días. Regulariza y registra una nueva inspección.`
         : `Regulariza y registra una nueva inspección antes del ${formatDate(e.sello.fecha_limite)} (${dias(e)} días).`,
+      plazo: { dias: dias(e), total: PLAZO_REGULARIZACION_DIAS, inicio: e.sello.fecha_inspeccion, fin: e.sello.fecha_limite },
       accion: { kind: 'inspeccion', label: 'Registrar nueva inspección', instalacionId: e.inst.id },
     };
   }
@@ -118,6 +138,7 @@ export function calcularProximoPaso(ee: Establecimiento): ProximoPaso {
       detalle: vencido
         ? `Venció hace ${Math.abs(dias(e))} días. Programa la reinspección.`
         : `Vence el ${formatDate(e.sello.fecha_limite)} (${dias(e)} días). Programa la reinspección con anticipación.`,
+      plazo: { dias: dias(e), total: VIGENCIA_VERDE_DIAS, inicio: e.sello.fecha_inspeccion, fin: e.sello.fecha_limite },
       accion: { kind: 'inspeccion', label: 'Registrar nueva inspección', instalacionId: e.inst.id },
     };
   }
@@ -153,6 +174,8 @@ export function calcularProximoPaso(ee: Establecimiento): ProximoPaso {
         titulo: `Proyecto TC6: ${tc6.replace(/_/g, ' ')}`,
         detalle: detalle[tc6],
         accion: sig ? { kind: 'avanzar_tc6', label: sig.label, estadoTc6: sig.estado } : undefined,
+        // Con el proyecto ingresado la SEC puede responder de dos formas
+        alternativa: tc6 === 'ingresado_sec' ? { kind: 'avanzar_tc6', label: 'Observado por la SEC', estadoTc6: 'observado' } : undefined,
       };
     }
 

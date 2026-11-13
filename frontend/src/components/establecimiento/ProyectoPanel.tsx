@@ -7,17 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Stepper } from '@/components/ui/Stepper';
 import { Modal } from '@/components/ui/Modal';
 import { EmpresaPicker } from '@/components/registro/EmpresaPicker';
-import { TC6_ESTADOS, Tc6Estado } from '@/lib/constants';
 import { puede } from '@/lib/capacidades';
-
-/** Siguientes estados TC6 permitidos (espejo de TC6_TRANSITIONS del backend). */
-const TC6_SIGUIENTES: Record<string, Tc6Estado[]> = {
-  sin_iniciar: ['en_elaboracion'],
-  en_elaboracion: ['ingresado_sec'],
-  ingresado_sec: ['observado', 'tc6_aprobado'],
-  observado: ['tc6_aprobado'],
-  tc6_aprobado: [],
-};
 
 interface Props {
   expediente: Expediente;
@@ -27,7 +17,6 @@ interface Props {
 }
 
 export function ProyectoPanel({ expediente, onChanged, advanceRef }: Props) {
-  const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -36,15 +25,12 @@ export function ProyectoPanel({ expediente, onChanged, advanceRef }: Props) {
   const [editError, setEditError] = useState<string | null>(null);
 
   const avanzar = async (estado: string) => {
-    setAdvancing(true);
     setError(null);
     try {
       await expedientesApi.advanceTc6(expediente.id, estado);
       onChanged();
     } catch (err: any) {
       setError(err.message || 'Error al avanzar el estado TC6');
-    } finally {
-      setAdvancing(false);
     }
   };
   if (advanceRef) advanceRef.current = avanzar;
@@ -76,7 +62,6 @@ export function ProyectoPanel({ expediente, onChanged, advanceRef }: Props) {
   };
 
   const empresa = expediente.empresa;
-  const siguientes = TC6_SIGUIENTES[expediente.estado_tc6] ?? [];
   const dato = (label: string, valor?: string | null) =>
     valor ? (
       <div>
@@ -127,25 +112,9 @@ export function ProyectoPanel({ expediente, onChanged, advanceRef }: Props) {
         </span>
         <Stepper current={expediente.estado_tc6} />
 
-        {puede('write') && siguientes.length > 0 && (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-4)' }}>
-            {siguientes.map((key) => {
-              const label = TC6_ESTADOS.find((s) => s.key === key)?.label ?? key;
-              return (
-                <Button
-                  key={key}
-                  variant={key === 'observado' ? 'danger' : 'secondary'}
-                  size="sm"
-                  loading={advancing}
-                  onClick={() => avanzar(key)}
-                  style={{ flex: 1 }}
-                >
-                  {key === 'observado' ? 'Observado por la SEC' : `Marcar: ${label}`}
-                </Button>
-              );
-            })}
-          </div>
-        )}
+        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-3)' }}>
+          El estado avanza desde “Siguiente paso”, arriba.
+        </span>
         {error && (
           <div style={{ color: 'var(--color-rojo)', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>⚠️ {error}</div>
         )}

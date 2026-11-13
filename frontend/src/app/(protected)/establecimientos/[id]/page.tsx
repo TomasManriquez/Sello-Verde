@@ -22,7 +22,8 @@ import { puede } from '@/lib/capacidades';
 const h1: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 900, fontSize: 'var(--text-xl)', margin: 0 };
 const cardTitle: React.CSSProperties = { fontFamily: 'Satoshi, sans-serif', fontWeight: 700, fontSize: 'var(--text-base)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' };
 const errorBox: React.CSSProperties = { color: 'var(--color-rojo)', fontSize: 'var(--text-xs)' };
-const optionsOf = (list: readonly string[]) => list.map((v) => ({ value: v, label: v }));
+type Tab = 'instalaciones' | 'documentos' | 'historial' | 'proyecto';
+const optionsOf =(list: readonly string[]) => list.map((v) => ({ value: v, label: v }));
 
 /**
  * Ficha única del establecimiento: levantamiento (locales e instalaciones), proyecto TC6,
@@ -41,7 +42,7 @@ export default function EstablecimientoDetailPage() {
 
   // Modales
   const [localOpen, setLocalOpen] = useState(false);
-  const [newLocal, setNewLocal] = useState({ numero_local: 1, nombre: '', direccion: '', usa_gas: true });
+  const [newLocal, setNewLocal] = useState({ nombre: '', direccion: '', usa_gas: true });
   const [instLocalId, setInstLocalId] = useState<number | null>(null);
   const [newInst, setNewInst] = useState({
     tipo_gas: TIPO_GAS_OPTIONS[0] as string,
@@ -54,6 +55,7 @@ export default function EstablecimientoDetailPage() {
   const [empresaGestion, setEmpresaGestion] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState({ nombre: '', direccion: '', comuna: '', nombre_propietario: '' });
+  const [tab, setTab] = useState<Tab>('instalaciones');
   const [busy, setBusy] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [aEliminar, setAEliminar] = useState<
@@ -67,8 +69,6 @@ export default function EstablecimientoDetailPage() {
       setExp(data.expediente_activo ? await expedientesApi.get(data.expediente_activo.id) : null);
       setError(null);
 
-      const siguiente = (data.locales ?? []).reduce((max, l) => (l.numero_local > max ? l.numero_local : max), 0) + 1;
-      setNewLocal((p) => ({ ...p, numero_local: siguiente }));
       setEditData({
         nombre: data.nombre ?? '',
         direccion: data.direccion ?? '',
@@ -198,45 +198,103 @@ export default function EstablecimientoDetailPage() {
   };
 
   const f = ee.resumen_sellos;
+  const locales = ee.locales ?? [];
+  const nInstalaciones = locales.reduce((n, l) => n + (l.instalaciones?.length ?? 0), 0);
+  const tabs: { key: Tab; label: string; visible: boolean }[] = [
+    { key: 'instalaciones', label: `Instalaciones (${nInstalaciones})`, visible: true },
+    { key: 'documentos', label: `Documentos (${exp?.documentos?.length ?? 0})`, visible: !!exp },
+    { key: 'historial', label: `Historial (${exp?.certificaciones?.length ?? 0})`, visible: !!exp },
+    { key: 'proyecto', label: 'Empresa y TC6', visible: !!exp },
+  ];
+
+  // La única acción primaria de la pantalla vive en el bloque "Siguiente paso"
+  const cta = !puede('write') ? null : accion?.kind === 'inspeccion' ? (
+    <Button as="a" href={hrefInspeccion}>{accion.label}</Button>
+  ) : accion ? (
+    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      <Button onClick={ejecutarAccion}>{accion.label}</Button>
+      {paso.alternativa?.estadoTc6 && (
+        <Button variant="secondary" onClick={() => advanceRef.current?.(paso.alternativa!.estadoTc6!)}>{paso.alternativa.label}</Button>
+      )}
+    </div>
+  ) : exp && hayInstalaciones ? (
+    <Button as="a" href={`/expedientes/${exp.id}/certificacion`}>Registrar inspección</Button>
+  ) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      {/* Encabezado: una sola acción primaria, la que corresponde al siguiente paso */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
-        <div>
-          <Button onClick={() => router.push('/establecimientos')} variant="ghost" size="sm" style={{ paddingLeft: 0, marginBottom: 'var(--space-2)' }}>
-            ← Volver a Establecimientos
-          </Button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-            <h1 style={h1}>{ee.nombre}</h1>
-            <Badge estado={ee.estado_general} />
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
-            RBD {ee.rbd}{ee.comuna ? ` · ${ee.comuna}` : ''}
-          </div>
+      <div>
+        <Button onClick={() => router.push('/establecimientos')} variant="ghost" size="sm" style={{ paddingLeft: 0, marginBottom: 'var(--space-2)' }}>
+          ← Volver a Establecimientos
+        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <h1 style={h1}>{ee.nombre}</h1>
+          <Badge estado={ee.estado_general} />
         </div>
-        {puede('write') && (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <Button variant="secondary" onClick={() => abrir(setEditOpen)}><Pencil size={16} aria-hidden="true" /> Editar</Button>
-            {accion?.kind === 'inspeccion' ? (
-              <Button as="a" href={hrefInspeccion}>{accion.label}</Button>
-            ) : accion ? (
-              <Button onClick={ejecutarAccion}>{accion.label}</Button>
-            ) : exp && hayInstalaciones ? (
-              <Button as="a" href={`/expedientes/${exp.id}/certificacion`}>Registrar inspección</Button>
-            ) : null}
-          </div>
-        )}
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
+          RBD {ee.rbd}{ee.comuna ? ` · ${ee.comuna}` : ''}
+        </div>
       </div>
 
-      <BannerProximoPaso paso={paso} />
       <EtapasProceso estadoGeneral={ee.estado_general} />
+      <BannerProximoPaso paso={paso}>{cta}</BannerProximoPaso>
 
-      <div className="hub-grid">
-        {/* Columna izquierda: ficha y proyecto */}
+      <div className="ficha-grid">
+        {/* Trabajo: instalaciones, documentos, historial y proyecto, uno a la vez */}
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div className="tabs-header" role="tablist" aria-label="Información del establecimiento">
+            {tabs.filter((t) => t.visible).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                id={`tab-${t.key}`}
+                aria-selected={tab === t.key}
+                aria-controls={`panel-${t.key}`}
+                className={`tab-btn${tab === t.key ? ' active' : ''}`}
+                style={{ minHeight: 44 }}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Todos montados, solo se oculta el inactivo: el avance de TC6 del botón primario necesita el ProyectoPanel vivo */}
+          <div role="tabpanel" id="panel-instalaciones" aria-labelledby="tab-instalaciones" hidden={tab !== 'instalaciones'}>
+            <InstalacionesPanel
+              ee={ee}
+              expedienteId={exp?.id}
+              onAddLocal={() => abrir(setLocalOpen)}
+              onAddInstalacion={(localId) => { setModalError(null); setInstLocalId(localId); }}
+              onEliminarLocal={(local) => { setModalError(null); setAEliminar({ tipo: 'local', local }); }}
+              onEliminarInstalacion={(inst, local) => { setModalError(null); setAEliminar({ tipo: 'instalacion', inst, local }); }}
+            />
+          </div>
+          {exp && (
+            <>
+              <div role="tabpanel" id="panel-documentos" aria-labelledby="tab-documentos" hidden={tab !== 'documentos'}>
+                <DocumentosPanel expedienteId={exp.id} documentos={exp.documentos ?? []} />
+              </div>
+              <div role="tabpanel" id="panel-historial" aria-labelledby="tab-historial" hidden={tab !== 'historial'}>
+                <HistorialPanel certificaciones={exp.certificaciones ?? []} onChanged={load} />
+              </div>
+              <div role="tabpanel" id="panel-proyecto" aria-labelledby="tab-proyecto" hidden={tab !== 'proyecto'}>
+                <ProyectoPanel expediente={exp} onChanged={load} advanceRef={advanceRef} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Consulta: detalles del establecimiento */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           <section className="surface" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
-            <h2 style={cardTitle}>Ficha del establecimiento</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+              <h2 style={{ ...cardTitle, border: 0, padding: 0, margin: 0 }}>Detalles</h2>
+              {puede('write') && (
+                <Button variant="ghost" size="sm" onClick={() => abrir(setEditOpen)}><Pencil size={16} aria-hidden="true" /> Editar</Button>
+              )}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--text-sm)' }}>
               {[
                 ['RBD', ee.rbd],
@@ -264,26 +322,6 @@ export default function EstablecimientoDetailPage() {
               )}
             </div>
           </section>
-
-          {exp && <ProyectoPanel expediente={exp} onChanged={load} advanceRef={advanceRef} />}
-        </div>
-
-        {/* Columna derecha: instalaciones, documentos e historial */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
-          <InstalacionesPanel
-            ee={ee}
-            expedienteId={exp?.id}
-            onAddLocal={() => abrir(setLocalOpen)}
-            onAddInstalacion={(localId) => { setModalError(null); setInstLocalId(localId); }}
-            onEliminarLocal={(local) => { setModalError(null); setAEliminar({ tipo: 'local', local }); }}
-            onEliminarInstalacion={(inst, local) => { setModalError(null); setAEliminar({ tipo: 'instalacion', inst, local }); }}
-          />
-          {exp && (
-            <>
-              <DocumentosPanel expedienteId={exp.id} documentos={exp.documentos ?? []} />
-              <HistorialPanel certificaciones={exp.certificaciones ?? []} onChanged={load} />
-            </>
-          )}
         </div>
       </div>
 
@@ -291,7 +329,6 @@ export default function EstablecimientoDetailPage() {
       <Modal open={localOpen} onClose={() => setLocalOpen(false)} title="Agregar local">
         <form onSubmit={handleAddLocal} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           {modalError && <div style={errorBox}>⚠️ {modalError}</div>}
-          <Input label="Número correlativo" type="number" value={newLocal.numero_local} onChange={(e) => setNewLocal((p) => ({ ...p, numero_local: Number(e.target.value) }))} required />
           <Input label="Nombre del local" placeholder="Ej: Casino Principal, Pabellón A" value={newLocal.nombre} onChange={(e) => setNewLocal((p) => ({ ...p, nombre: e.target.value }))} required />
           <Input label="Dirección / ubicación dentro del recinto" placeholder="Ej: Patio trasero, Edificio Norte Piso 1" value={newLocal.direccion} onChange={(e) => setNewLocal((p) => ({ ...p, direccion: e.target.value }))} />
           <label style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', fontSize: 'var(--text-sm)' }}>

@@ -92,6 +92,7 @@ services:
         # NEXT_PUBLIC_* se hornean (bake) en el bundle del cliente en tiempo de BUILD.
         # Debe apuntar al dominio público accesible desde el navegador.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_INTERNAL_API_URL: http://backend:3001
     container_name: sello_verde_frontend
     restart: always
     # Solo accesible desde loopback: el Nginx del host apuntará aquí

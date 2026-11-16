@@ -15,6 +15,9 @@ COPY . .
 # Se pasa como build arg desde docker-compose.prod.yml.
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# Los rewrites de next.config se resuelven al construir: sin esto /api apunta al dominio público y vuelve a entrar por Nginx (502).
+ARG NEXT_INTERNAL_API_URL
+ENV NEXT_INTERNAL_API_URL=$NEXT_INTERNAL_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
